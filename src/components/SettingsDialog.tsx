@@ -8,6 +8,7 @@ export type TabGroupDisplayOrder = 'groupsFirst' | 'groupsLast' | 'chromeOrder';
 export interface SettingsValues {
   fontSize: number;
   hideOtherBookmarks: boolean;
+  flattenBookmarksBar: boolean;  // show Bookmarks Bar contents at the root instead of as a folder
   tabGroupDisplayOrder: TabGroupDisplayOrder;
   pinnedIconSize: number;
   bookmarkOpenMode: BookmarkOpenMode;
@@ -37,6 +38,7 @@ export function SettingsDialog({
   // Temporary state for the dialog
   const [tempFontSize, setTempFontSize] = useState(settings.fontSize);
   const [tempHideOtherBookmarks, setTempHideOtherBookmarks] = useState(settings.hideOtherBookmarks);
+  const [tempFlattenBookmarksBar, setTempFlattenBookmarksBar] = useState(settings.flattenBookmarksBar);
   const [tempTabGroupDisplayOrder, setTempTabGroupDisplayOrder] = useState(settings.tabGroupDisplayOrder);
   const [tempPinnedIconSize, setTempPinnedIconSize] = useState(settings.pinnedIconSize);
   const [tempBookmarkOpenMode, setTempBookmarkOpenMode] = useState(settings.bookmarkOpenMode);
@@ -67,6 +69,7 @@ export function SettingsDialog({
 
       // These don't need fresh read - not shown in dialog or use chrome.storage.local
       setTempHideOtherBookmarks(settings.hideOtherBookmarks);
+      setTempFlattenBookmarksBar(settings.flattenBookmarksBar);
       setTempBookmarkOpenMode(settings.bookmarkOpenMode);
       setTempUseSpaces(settings.useSpaces);
       setTempArcSingleClickOpensTab(settings.arcSingleClickOpensTab);
@@ -83,6 +86,7 @@ export function SettingsDialog({
     onApply({
       fontSize: tempFontSize,
       hideOtherBookmarks: tempHideOtherBookmarks,
+      flattenBookmarksBar: tempFlattenBookmarksBar,
       tabGroupDisplayOrder: tempTabGroupDisplayOrder,
       pinnedIconSize: tempPinnedIconSize,
       bookmarkOpenMode: tempBookmarkOpenMode,
@@ -186,6 +190,24 @@ export function SettingsDialog({
               />
               <p className="mt-1 text-gray-500 dark:text-gray-400">
                 Default: 22px
+              </p>
+            </div>
+
+            {/* Show Bookmarks Bar contents at the root (Arc-style, no wrapper folder) */}
+            <div>
+              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tempFlattenBookmarksBar}
+                  onChange={(e) => setTempFlattenBookmarksBar(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Show Bookmarks Bar contents at the top level
+              </label>
+              <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
+                {tempFlattenBookmarksBar
+                  ? 'Items inside "Bookmarks Bar" are listed directly, without the folder row (Arc-style)'
+                  : '"Bookmarks Bar" is shown as a folder you expand'}
               </p>
             </div>
 

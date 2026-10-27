@@ -62,6 +62,7 @@ interface SidebarContentProps
   onPin: (url: string, title: string, faviconUrl?: string) => void;
   onPinMultiple: (pins: Array<{ url: string; title: string; faviconUrl?: string }>) => void;
   hideOtherBookmarks: boolean;
+  flattenBookmarksBar: boolean;
   externalDropTarget: ExternalDropTarget | null;
   bookmarkOpenMode: BookmarkOpenMode;
   arcSingleClickOpensTab: boolean;
@@ -86,6 +87,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   onPin,
   onPinMultiple,
   hideOtherBookmarks,
+  flattenBookmarksBar,
   externalDropTarget,
   bookmarkOpenMode,
   arcSingleClickOpensTab,
@@ -187,6 +189,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         onPin={onPin}
         onPinMultiple={onPinMultiple}
         hideOtherBookmarks={hideOtherBookmarks}
+        flattenBookmarksBar={flattenBookmarksBar}
         externalDropTarget={externalDropTarget}
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}
@@ -535,6 +538,11 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
+  // Arc-style root: list Bookmarks Bar contents directly instead of as a folder row
+  const [flattenBookmarksBar, setFlattenBookmarksBar] = useChromeLocalStorage(
+    'sidebar-flatten-bookmarks-bar',
+    false
+  );
   const [tabGroupDisplayOrder, setTabGroupDisplayOrder] = useLocalStorage<TabGroupDisplayOrder>(
     'sidebar-tab-group-display-order',
     'groupsFirst',
@@ -727,6 +735,7 @@ function App() {
   const handleApplySettings = (newSettings: SettingsValues) => {
     setFontSize(newSettings.fontSize);
     setHideOtherBookmarks(newSettings.hideOtherBookmarks);
+    setFlattenBookmarksBar(newSettings.flattenBookmarksBar);
     setTabGroupDisplayOrder(newSettings.tabGroupDisplayOrder);
     setPinnedIconSize(newSettings.pinnedIconSize);
     setBookmarkOpenMode(newSettings.bookmarkOpenMode);
@@ -945,6 +954,7 @@ function App() {
         settings={{
           fontSize,
           hideOtherBookmarks,
+          flattenBookmarksBar,
           tabGroupDisplayOrder,
           pinnedIconSize,
           bookmarkOpenMode,
@@ -1212,6 +1222,7 @@ function App() {
         onPin={addPin}
         onPinMultiple={addPins}
         hideOtherBookmarks={hideOtherBookmarks}
+        flattenBookmarksBar={flattenBookmarksBar}
         externalDropTarget={externalDropTarget}
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}

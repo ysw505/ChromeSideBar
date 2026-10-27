@@ -762,6 +762,7 @@ interface BookmarkTreeProps {
   onPin?: (url: string, title: string, faviconUrl?: string) => void;
   onPinMultiple?: (pins: Array<{ url: string; title: string; faviconUrl?: string }>) => void;
   hideOtherBookmarks?: boolean;
+  flattenBookmarksBar?: boolean;
   externalDropTarget?: ExternalDropTarget | null;
   bookmarkOpenMode?: BookmarkOpenMode;
   arcSingleClickOpensTab?: boolean;
@@ -774,7 +775,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -924,6 +925,13 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
   let visibleBookmarks = hideOtherBookmarks
     ? bookmarks.filter(node => node.id !== '2')
     : bookmarks;
+
+  // Arc-style root: list the Bookmarks Bar's (id "1") children directly instead of a folder row.
+  // Children keep parentId "1", so drag-drop and context menus still resolve to the real folder.
+  if (flattenBookmarksBar)
+  {
+    visibleBookmarks = visibleBookmarks.flatMap(node => node.id === '1' ? (node.children ?? []) : [node]);
+  }
 
   // Space folder info - track if folder is found or missing
   const spaceHasFolder = activeSpace?.id !== 'all' && !!activeSpace?.bookmarkFolderPath;
