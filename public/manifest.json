@@ -31,12 +31,15 @@
     "default_path": "index.html"
   },
   "commands": {
-    "_execute_side_panel": {
+    "toggle-side-panel": {
       "suggested_key": {
-        "default": "Ctrl+Shift+E",
-        "mac": "Command+Shift+E"
+        "default": "Ctrl+B",
+        "mac": "MacCtrl+B"
       },
       "description": "Toggle Side Panel"
+    },
+    "_execute_side_panel": {
+      "description": "Open Side Panel"
     },
     "prev-used-tab": {
       "suggested_key": {
