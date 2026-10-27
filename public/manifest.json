@@ -31,12 +31,12 @@
     "default_path": "index.html"
   },
   "commands": {
-    "toggle-side-panel": {
+    "_execute_action": {
       "suggested_key": {
         "default": "Ctrl+B",
-        "mac": "MacCtrl+B"
+        "mac": "Command+B"
       },
-      "description": "Toggle Side Panel"
+      "description": "Toggle Side Panel (same as clicking the toolbar icon)"
     },
     "_execute_side_panel": {
       "description": "Open Side Panel"

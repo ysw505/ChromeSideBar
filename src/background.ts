@@ -10,12 +10,6 @@ import { SpaceManager } from './managers/impl/spaceManager';
 import { TabHistoryManager } from './managers/impl/tabHistoryManager';
 import { LastAudibleTracker } from './managers/impl/lastAudibleTracker';
 import { PinnedSitesManager } from './managers/impl/pinnedSitesManager';
-import { TOGGLE_SIDE_PANEL_COMMAND, SidePanelRegistry } from './utils/sidePanelToggle';
-
-// Tracks open side panels + focused window so the toggle command can call
-// sidePanel.open() without losing the user-gesture context (see sidePanelToggle.ts)
-const sidePanelRegistry = new SidePanelRegistry();
-sidePanelRegistry.install();
 
 // Set side panel to open when clicking the extension toolbar button
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -826,15 +820,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
 
 chrome.commands.onCommand.addListener((command) =>
 {
-  // Handled before stateReady on purpose: chrome.sidePanel.open() must run in
-  // this command's user-gesture context, which any await in front of it can drop.
-  if (command === TOGGLE_SIDE_PANEL_COMMAND)
-  {
-    sidePanelRegistry.toggle().catch((error) =>
-      console.error('[toggle-side-panel] failed:', error));
-    return;
-  }
-
   (async () =>
   {
     await stateReady;
