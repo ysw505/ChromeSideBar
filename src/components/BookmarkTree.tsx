@@ -275,7 +275,14 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
       return;
     }
 
-    // Plain click: perform action for bookmarks (folders only expand/collapse via chevron)
+    // Plain click on a folder row: expand/collapse (same as the chevron)
+    if (isFolder)
+    {
+      toggleFolder(node.id, !expandedState[node.id]);
+      return;
+    }
+
+    // Plain click: perform action for bookmarks
     // Arc mode: open/activate bookmark on single click if setting enabled
     if (node.url && bookmarkOpenMode === 'arc' && onOpenBookmark && arcSingleClickOpensTab)
     {
