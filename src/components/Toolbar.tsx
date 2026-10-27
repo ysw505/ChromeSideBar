@@ -28,6 +28,8 @@ interface ToolbarProps
   onShowToast?: (message: string) => void;
   showFilterArea?: boolean;
   onToggleFilterArea?: () => void;
+  // When it becomes true, focus the search input once (shown by the parent first if it was hidden)
+  autoFocusFilterOnMount?: boolean;
   hasUnreadNews?: boolean;
 }
 
@@ -75,6 +77,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   onShowToast,
   showFilterArea = false,
   onToggleFilterArea,
+  autoFocusFilterOnMount = false,
   hasUnreadNews = false,
 }, _ref) =>
 {
@@ -407,32 +410,71 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     };
   }, [showSyntaxHelp]);
 
+  // Focus the search input and put the cursor at the end. Returns false when the
+  // input is not rendered (search bar hidden).
+  const focusInputWithCursorAtEnd = useCallback((): boolean =>
+  {
+    const input = inputRef.current;
+    if (!input)
+    {
+      return false;
+    }
+    input.focus();
+    // Use setSelectionRange for controlled inputs to avoid fighting with React
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+    return true;
+  }, []);
+
+  // Set when the input should be focused as soon as it is rendered
+  // (search bar was hidden when the focus request came in)
+  const pendingFocusRef = useRef(false);
+  // The open-time auto-focus runs at most once per page load
+  const didAutoFocusRef = useRef(false);
+
+  // Latest toggle callback, so the command listener below (registered once) never calls a stale one
+  const onToggleFilterAreaRef = useRef(onToggleFilterArea);
+  onToggleFilterAreaRef.current = onToggleFilterArea;
+
+  // Open-time auto-focus: the parent turns this prop on once after reading the setting
+  useEffect(() =>
+  {
+    if (autoFocusFilterOnMount && !didAutoFocusRef.current)
+    {
+      didAutoFocusRef.current = true;
+      pendingFocusRef.current = true;
+    }
+  }, [autoFocusFilterOnMount]);
+
+  // Fulfil a pending focus request once the search input is rendered
+  useEffect(() =>
+  {
+    if (showFilterArea && pendingFocusRef.current && inputRef.current)
+    {
+      pendingFocusRef.current = false;
+      focusInputWithCursorAtEnd();
+    }
+  }, [showFilterArea, autoFocusFilterOnMount, focusInputWithCursorAtEnd]);
+
   // Listen for Chrome extension commands directly
   useEffect(() =>
   {
-    const focusInputWithCursorAtEnd = () =>
-    {
-      const input = inputRef.current;
-      if (input)
-      {
-        input.focus();
-        // Use setSelectionRange for controlled inputs to avoid fighting with React
-        const len = input.value.length;
-        input.setSelectionRange(len, len);
-      }
-    };
-
     const handleCommand = (command: string) =>
     {
+      // Focus the search box; if the search bar is hidden, show it and focus after it renders
       if (command === 'focus-filter-input')
       {
-        focusInputWithCursorAtEnd();
+        if (!focusInputWithCursorAtEnd() && onToggleFilterAreaRef.current)
+        {
+          pendingFocusRef.current = true;
+          onToggleFilterAreaRef.current();
+        }
       }
     };
 
     chrome.commands.onCommand.addListener(handleCommand);
     return () => chrome.commands.onCommand.removeListener(handleCommand);
-  }, []);
+  }, [focusInputWithCursorAtEnd]);
 
   // Handle input keydown for ArrowDown to open dropdown, Enter to commit
   const handleInputKeydown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) =>

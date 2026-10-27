@@ -79,6 +79,9 @@ interface SidebarContentProps
   onSpaceDropTargetChange?: (spaceId: string | null) => void;
 }
 
+// chrome.storage.local key for the "focus search box when the side panel opens" setting
+const FOCUS_SEARCH_ON_OPEN_KEY = 'sidebar-focus-search-on-open';
+
 // Storage key for scroll position per space per window
 const getScrollTopKey = (windowId: number, spaceId: string) =>
   `scrollTop_${windowId}_${spaceId}`;
@@ -543,6 +546,12 @@ function App() {
     'sidebar-flatten-bookmarks-bar',
     false
   );
+  // Show + focus the search box each time the side panel opens
+  const [focusSearchOnOpen, setFocusSearchOnOpen] = useChromeLocalStorage(
+    FOCUS_SEARCH_ON_OPEN_KEY,
+    false,
+    { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+  );
   const [tabGroupDisplayOrder, setTabGroupDisplayOrder] = useLocalStorage<TabGroupDisplayOrder>(
     'sidebar-tab-group-display-order',
     'groupsFirst',
@@ -619,6 +628,34 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
+
+  // One-shot flag for Toolbar: focus the search input after this page load
+  const [focusSearchOnLoad, setFocusSearchOnLoad] = useState(false);
+
+  // Opening the side panel loads this page fresh. Read the setting straight from
+  // chrome.storage.local instead of reacting to focusSearchOnOpen: that hook value
+  // starts as the default (false) until its async get resolves and has no "loaded"
+  // flag, and reacting to it would also fire when the user turns the setting on later.
+  useEffect(() =>
+  {
+    let mounted = true;
+    chrome.storage.local.get(FOCUS_SEARCH_ON_OPEN_KEY).then(result =>
+    {
+      // Setting on: show the search bar (no-op if already shown) and ask Toolbar to focus it
+      if (mounted && result[FOCUS_SEARCH_ON_OPEN_KEY] === 'true')
+      {
+        setShowFilterArea(true);
+        setFocusSearchOnLoad(true);
+      }
+    }).catch(error =>
+    {
+      if (import.meta.env.DEV)
+      {
+        console.error('Failed to read focus-search-on-open setting:', error);
+      }
+    });
+    return () => { mounted = false; };
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showTestRunner, setShowTestRunner] = useState(false);
@@ -736,6 +773,7 @@ function App() {
     setFontSize(newSettings.fontSize);
     setHideOtherBookmarks(newSettings.hideOtherBookmarks);
     setFlattenBookmarksBar(newSettings.flattenBookmarksBar);
+    setFocusSearchOnOpen(newSettings.focusSearchOnOpen);
     setTabGroupDisplayOrder(newSettings.tabGroupDisplayOrder);
     setPinnedIconSize(newSettings.pinnedIconSize);
     setBookmarkOpenMode(newSettings.bookmarkOpenMode);
@@ -955,6 +993,7 @@ function App() {
           fontSize,
           hideOtherBookmarks,
           flattenBookmarksBar,
+          focusSearchOnOpen,
           tabGroupDisplayOrder,
           pinnedIconSize,
           bookmarkOpenMode,
@@ -1056,6 +1095,7 @@ function App() {
               setFilterText('');
             }
           }}
+          autoFocusFilterOnMount={focusSearchOnLoad}
           hasUnreadNews={hasUnreadNews}
         />
 

@@ -18,6 +18,7 @@ export interface SettingsValues {
   useSpaceColor: boolean;
   spaceColorAlpha: number;  // 1-100 percent
   followActiveTab: FollowActiveTabMode;
+  focusSearchOnOpen: boolean;  // show + focus the search box each time the side panel opens
 }
 
 interface SettingsDialogProps {
@@ -48,6 +49,7 @@ export function SettingsDialog({
   const [tempUseSpaceColor, setTempUseSpaceColor] = useState(settings.useSpaceColor);
   const [tempSpaceColorAlpha, setTempSpaceColorAlpha] = useState(settings.spaceColorAlpha);
   const [tempFollowActiveTab, setTempFollowActiveTab] = useState(settings.followActiveTab);
+  const [tempFocusSearchOnOpen, setTempFocusSearchOnOpen] = useState(settings.focusSearchOnOpen);
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
 
   // Track previous isOpen to detect when dialog opens
@@ -77,6 +79,7 @@ export function SettingsDialog({
       setTempUseSpaceColor(settings.useSpaceColor);
       setTempSpaceColorAlpha(settings.spaceColorAlpha);
       setTempFollowActiveTab(settings.followActiveTab);
+      setTempFocusSearchOnOpen(settings.focusSearchOnOpen);
       setActiveTab('appearance');
     }
     wasOpen.current = isOpen;
@@ -96,6 +99,7 @@ export function SettingsDialog({
       useSpaceColor: tempUseSpaceColor,
       spaceColorAlpha: tempSpaceColorAlpha,
       followActiveTab: tempFollowActiveTab,
+      focusSearchOnOpen: tempFocusSearchOnOpen,
     });
   };
 
@@ -370,6 +374,22 @@ export function SettingsDialog({
               </select>
               <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
                 Only applies in the All view
+              </p>
+            </div>
+
+            {/* Focus the search box when the side panel opens */}
+            <div>
+              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tempFocusSearchOnOpen}
+                  onChange={(e) => setTempFocusSearchOnOpen(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Focus the search box when the side panel opens
+              </label>
+              <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
+                Also shows the search bar if it is hidden.
               </p>
             </div>
           </>
