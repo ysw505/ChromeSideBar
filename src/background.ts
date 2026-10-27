@@ -1,4 +1,5 @@
-import { SpaceMessageAction, Space } from './utils/spaceMessages';
+import { SpaceMessageAction, Space, ALL_SPACE } from './utils/spaceMessages';
+import { USE_SPACES_KEY, isSpacesEnabled, nextSpaceId } from './utils/spaceCycle';
 import { FOLLOW_ACTIVE_TAB_KEY, parseFollowActiveTabMode } from './utils/followActiveTab';
 import { isPinnedManagedTab, getTabAssociations, saveTabAssociationBackup, removeTabAssociationBackup, updateTabAssociationBackupIndices, removeWindowAssociationBackup, restoreTabAssociationBackup } from './utils/tabAssociations';
 import { toChromeColor } from './utils/groupColors';
@@ -127,6 +128,40 @@ class NewsVersionChecker
     {
       // Silently skip — try again next week
     }
+  }
+}
+
+// =============================================================================
+// SpaceKeyboardCycler - Handles the "prev-space" / "next-space" commands
+// =============================================================================
+
+class SpaceKeyboardCycler
+{
+  constructor(
+    private spaceManager: SpaceManager,
+    private spaceStateManager: SpaceWindowStateManager,
+  )
+  {
+  }
+
+  // Switches the window's sidebar one Space back or forward, wrapping at the
+  // ends. Only the active space changes - no tab is activated, same as picking
+  // a Space in the panel.
+  async step(windowId: number, direction: -1 | 1): Promise<void>
+  {
+    const result = await chrome.storage.local.get([USE_SPACES_KEY]);
+    if (!isSpacesEnabled(result[USE_SPACES_KEY])) return;
+
+    const targetId = nextSpaceId(this.orderedSpaceIds(), this.spaceStateManager.getActiveSpace(windowId), direction);
+    if (targetId === undefined) return;
+
+    this.spaceStateManager.setActiveSpace(windowId, targetId);
+  }
+
+  // Same order as the panel's space bar: "All" first, then the user's Spaces
+  private orderedSpaceIds(): string[]
+  {
+    return [ALL_SPACE.id, ...this.spaceManager.getSpaces().map((space) => space.id)];
   }
 }
 
@@ -269,6 +304,7 @@ async function setActiveTabAndSpace(
 
 const spaceStateManager = new SpaceWindowStateManager();
 const spaceManager = new SpaceManager();
+const spaceKeyboardCycler = new SpaceKeyboardCycler(spaceManager, spaceStateManager);
 // setActiveTabAndSpace and getSpaceForTab are orchestration living here, so
 // the manager takes them rather than importing them back out of this file -
 // see TabHistoryDeps in managers/impl/tabHistoryManager.ts.
@@ -831,6 +867,18 @@ chrome.commands.onCommand.addListener((command) =>
         if (tabs.length === 0) return;
         const direction = command === "prev-used-tab" ? -1 : 1;
         historyManager.navigate(tabs[0].windowId, direction);
+      });
+    }
+
+    // Switch the focused window's sidebar to the previous / next Space (wraps around)
+    if (command === "prev-space" || command === "next-space")
+    {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) =>
+      {
+        if (tabs.length === 0) return;
+        const direction = command === "prev-space" ? -1 : 1;
+        spaceKeyboardCycler.step(tabs[0].windowId, direction).catch((error) =>
+          console.error(`[${command}] failed:`, error));
       });
     }
 

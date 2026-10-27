@@ -41,6 +41,12 @@
     "_execute_side_panel": {
       "description": "Open Side Panel"
     },
+    "prev-space": {
+      "description": "Previous Space"
+    },
+    "next-space": {
+      "description": "Next Space"
+    },
     "prev-used-tab": {
       "suggested_key": {
         "default": "Ctrl+Shift+Comma",
