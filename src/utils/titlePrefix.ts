@@ -1,30 +1,156 @@
-// "prefix · rest" bookmark names: split the prefix off so it can be shown as a colored tag
+// Tags in bookmark names: "#fin #kr argocd" (hashtags anywhere) or the older "fin · argocd" form.
+// The tags are shown as colored chips and the rest of the title as the name.
 
-// Separator between prefix and rest: space, U+00B7 middle dot, space
-const PREFIX_SEPARATOR = ' · ';
+// Legacy separator between tag and name: space, U+00B7 middle dot, space
+const LEGACY_SEPARATOR = ' · ';
 
-export interface TitlePrefix
+// A hashtag token: "#" at the start or after whitespace, then 1+ chars that are neither
+// whitespace nor "#", ending at whitespace or end of string ("#fin#kr" is not a tag)
+const HASHTAG_TOKEN = /(^|\s)#([^\s#]+)(?=\s|$)/gu;
+
+// A tag must contain at least one letter, so "Issue #123" keeps its number
+const HAS_LETTER = /\p{L}/u;
+
+export interface TitleTags
 {
-  prefix: string;
-  rest: string;
+  tags: string[];
+  name: string;
 }
 
-// Split a title on the first " · ". Returns undefined unless both sides are non-empty after trim.
-export function splitTitlePrefix(title: string): TitlePrefix | undefined
+// Collapse whitespace runs and trim
+function collapseSpaces(text: string): string
 {
-  const separatorIndex = title.indexOf(PREFIX_SEPARATOR);
-  if (separatorIndex < 0)
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+// Hashtag form: pull out every "#word" token that contains a letter
+function parseHashtags(title: string): TitleTags
+{
+  const tags: string[] = [];
+  const name = title.replace(HASHTAG_TOKEN, (token: string, lead: string, word: string) =>
+  {
+    // Numbers-only tokens like "#123" stay in the name
+    if (!HAS_LETTER.test(word))
+    {
+      return token;
+    }
+    if (!tags.includes(word))
+    {
+      tags.push(word);
+    }
+    return lead || ' ';
+  });
+  return { tags, name: collapseSpaces(name) };
+}
+
+// Legacy form: "a · b · name" -> tags [a, b], name "name"
+function parseLegacySeparator(title: string): TitleTags
+{
+  const segments = title.split(LEGACY_SEPARATOR).map(s => s.trim()).filter(s => s.length > 0);
+  if (segments.length < 2)
+  {
+    return { tags: [], name: title.trim() };
+  }
+  const tags = segments.slice(0, -1).filter((tag, i, all) => all.indexOf(tag) === i);
+  return { tags, name: segments[segments.length - 1] };
+}
+
+// Split a title into tags + name. Undefined when there are no tags or nothing is left as the name.
+export function parseTitleTags(title: string): TitleTags | undefined
+{
+  // Hashtags win; the " · " form is only read when no hashtag is present
+  let parsed = parseHashtags(title);
+  if (parsed.tags.length === 0)
+  {
+    parsed = parseLegacySeparator(title);
+  }
+  if (parsed.tags.length === 0 || !parsed.name)
   {
     return undefined;
+  }
+  return parsed;
+}
+
+// Clean up one typed tag: trim, drop leading "#", join inner spaces with "-"
+export function normalizeTag(tag: string): string
+{
+  return tag.trim().replace(/^#+/, '').trim().replace(/\s+/g, '-');
+}
+
+// Canonical title: tags first as hashtags, then the name ("#fin #kr argocd")
+export function formatTitleTags(tags: string[], name: string): string
+{
+  const cleanTags: string[] = [];
+  // Normalise, drop empties and duplicates, keep order
+  for (const tag of tags)
+  {
+    const clean = normalizeTag(tag);
+    if (clean && !cleanTags.includes(clean))
+    {
+      cleanTags.push(clean);
+    }
+  }
+  const cleanName = name.trim();
+  if (cleanTags.length === 0)
+  {
+    return cleanName;
+  }
+  const hashtags = cleanTags.map(tag => `#${tag}`).join(' ');
+  return cleanName ? `${hashtags} ${cleanName}` : hashtags;
+}
+
+// How often each tag is used, with a stable "most used first, then A-Z" order
+class TagUsageCounts
+{
+  private readonly counts = new Map<string, number>();
+
+  add(tag: string): void
+  {
+    this.counts.set(tag, (this.counts.get(tag) ?? 0) + 1);
   }
 
-  const prefix = title.slice(0, separatorIndex).trim();
-  const rest = title.slice(separatorIndex + PREFIX_SEPARATOR.length).trim();
-  if (!prefix || !rest)
+  has(tag: string): boolean
   {
-    return undefined;
+    return this.counts.has(tag);
   }
-  return { prefix, rest };
+
+  mostUsedFirst(): string[]
+  {
+    return [...this.counts.keys()].sort((a, b) =>
+      (this.counts.get(b)! - this.counts.get(a)!) || a.localeCompare(b));
+  }
+}
+
+// All tags used in the bookmark tree, ordered for suggestions:
+// tags used in the preferred folder first, then every other tag (each group most used first)
+export function collectTitleTags(nodes: chrome.bookmarks.BookmarkTreeNode[], preferredParentId?: string | null): string[]
+{
+  const inFolder = new TagUsageCounts();
+  const everywhere = new TagUsageCounts();
+
+  // Walk the whole tree and count tags of bookmark (url) nodes
+  const visit = (node: chrome.bookmarks.BookmarkTreeNode): void =>
+  {
+    if (node.url)
+    {
+      const parsed = parseTitleTags(node.title);
+      // Count each tag of this bookmark
+      for (const tag of parsed?.tags ?? [])
+      {
+        everywhere.add(tag);
+        if (preferredParentId && node.parentId === preferredParentId)
+        {
+          inFolder.add(tag);
+        }
+      }
+    }
+    node.children?.forEach(visit);
+  };
+  nodes.forEach(visit);
+
+  const preferred = inFolder.mostUsedFirst();
+  const others = everywhere.mostUsedFirst().filter(tag => !inFolder.has(tag));
+  return [...preferred, ...others];
 }
 
 // Fixed tag colors (light + dark). Full class strings so Tailwind picks them up.
@@ -39,7 +165,7 @@ const PREFIX_TAG_CLASSES = [
   'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200',
 ];
 
-// Picks a stable color for a prefix: the same prefix always gets the same color
+// Picks a stable color for a tag: the same tag always gets the same color
 export class PrefixColorPalette
 {
   constructor(private readonly classes: readonly string[] = PREFIX_TAG_CLASSES)

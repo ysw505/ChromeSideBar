@@ -20,7 +20,7 @@ export interface SettingsValues {
   followActiveTab: FollowActiveTabMode;
   focusSearchOnOpen: boolean;  // show + focus the search box each time the side panel opens
   keepBookmarkNames: boolean;  // keep the bookmark's own name even while its tab is open (no live page title)
-  prefixTags: boolean;  // show the "prefix · " part of a bookmark name as a colored tag
+  prefixTags: boolean;  // show the #tags (or legacy "tag · ") of a bookmark name as colored chips
 }
 
 interface SettingsDialogProps {
@@ -239,7 +239,7 @@ export function SettingsDialog({
               </p>
             </div>
 
-            {/* Show the "prefix · " part of bookmark names as a colored tag */}
+            {/* Show the #tags of bookmark names as colored chips */}
             <div>
               <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input
@@ -248,10 +248,10 @@ export function SettingsDialog({
                   onChange={(e) => setTempPrefixTags(e.target.checked)}
                   className="rounded border-gray-300 dark:border-gray-600"
                 />
-                Show "prefix · " in bookmark names as a colored tag
+                Show #tags in bookmark names as colored chips
               </label>
               <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
-                A name like "pub · argocd" shows pub as a small colored tag.
+                A name like "#fin #kr argocd" shows fin and kr as small chips; click a chip to filter. Old "fin · argocd" names are read the same way.
               </p>
             </div>
 

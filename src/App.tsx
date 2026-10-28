@@ -71,6 +71,7 @@ interface SidebarContentProps
   onMoveHighlightReady: (fn: MoveBookmarkHighlight) => void;
   keepBookmarkNames: boolean;
   prefixTags: boolean;
+  onFilterByTag: (tag: string, append: boolean) => void;
   filterLiveTabs: boolean;
   filterText: string;
   tabGroupDisplayOrder: TabGroupDisplayOrder;
@@ -103,6 +104,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   onMoveHighlightReady,
   keepBookmarkNames,
   prefixTags,
+  onFilterByTag,
   filterLiveTabs,
   filterText,
   tabGroupDisplayOrder,
@@ -209,6 +211,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         onMoveHighlightReady={onMoveHighlightReady}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
+        onFilterByTag={onFilterByTag}
         filterLiveTabs={filterLiveTabs}
         filterText={filterText}
         activeSpace={activeSpace}
@@ -570,7 +573,7 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
-  // Show the "prefix · " part of bookmark names as a colored tag
+  // Show the #tags (or legacy "tag · ") of bookmark names as colored chips
   const [prefixTags, setPrefixTags] = useChromeLocalStorage(
     'sidebar-prefix-tags',
     false,
@@ -819,6 +822,27 @@ function App() {
   // Filter handlers
   const handleFilterTextChange = (text: string) => {
     setFilterText(text);
+  };
+
+  // Tag chip clicked in a bookmark row: search for "#tag" (Shift = add it to the current search).
+  // The search is a plain substring match, so legacy "tag · name" titles do not match "#tag".
+  const handleFilterByTag = (tag: string, append: boolean) =>
+  {
+    const token = `#${tag}`;
+    const current = filterText.trim();
+    const alreadyHasToken = current.split(/\s+/).includes(token);
+    let newText = token;
+    // Shift+click with a search already typed: add the tag (or keep the search as is if it has it)
+    if (append && current)
+    {
+      newText = alreadyHasToken ? current : `${current} ${token}`;
+    }
+    // Show the search bar so the tag search is visible and editable
+    if (!showFilterArea)
+    {
+      setShowFilterArea(true);
+    }
+    handleFilterTextChange(newText);
   };
 
   // Enter in search box: open the first bookmark the tree shows for this text (Toolbar clears on success)
@@ -1317,6 +1341,7 @@ function App() {
         onMoveHighlightReady={(fn) => { moveBookmarkHighlightRef.current = fn; }}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
+        onFilterByTag={handleFilterByTag}
         filterLiveTabs={showFilterArea && filterLiveTabs}
         filterText={filterText}
         tabGroupDisplayOrder={tabGroupDisplayOrder}

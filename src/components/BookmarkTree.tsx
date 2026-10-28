@@ -21,7 +21,7 @@ import * as ContextMenu from './menu/ContextMenu';
 import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
-import { splitTitlePrefix, prefixColorPalette } from '../utils/titlePrefix';
+import { parseTitleTags, collectTitleTags, prefixColorPalette } from '../utils/titlePrefix';
 import {
   Globe,
   Trash,
@@ -179,7 +179,8 @@ interface BookmarkRowProps {
   isActive?: boolean;
   liveTitle?: string;
   keepBookmarkNames?: boolean;  // always show node.title, never the live tab title
-  prefixTags?: boolean;  // render "prefix · rest" names with prefix as a colored tag
+  prefixTags?: boolean;  // render "#tag name" (or legacy "tag · name") titles with each tag as a colored chip
+  onFilterByTag?: (tag: string, append: boolean) => void;  // tag chip clicked (append = Shift held)
   isSelected?: boolean;
   checkIsLoaded?: (bookmarkId: string) => boolean;
   checkIsAudible?: (bookmarkId: string) => boolean;
@@ -252,6 +253,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   liveTitle,
   keepBookmarkNames = false,
   prefixTags = false,
+  onFilterByTag,
   isSelected,
   highlightedBookmarkId,
   onOpenBookmark,
@@ -439,19 +441,32 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   const showLiveTitle = !keepBookmarkNames && bookmarkOpenMode === 'arc' && isLoaded && !!liveTitle;
   const displayTitle = showLiveTitle ? liveTitle! : node.title;
 
-  // Bookmark rows only (not folders): show a "prefix · " part of the label as a colored tag
-  const titlePrefix = prefixTags && !isFolder ? splitTitlePrefix(displayTitle) : undefined;
-  const titleLabel = titlePrefix ? (
+  // Bookmark rows only (not folders): show each tag of the label as a colored chip
+  const titleTags = prefixTags && !isFolder ? parseTitleTags(displayTitle) : undefined;
+  const titleLabel = titleTags ? (
     <>
-      <span
-        className={clsx(
-          'inline-block align-middle mr-1 px-1 rounded text-[10px] leading-4 font-medium whitespace-nowrap',
-          prefixColorPalette.classesFor(titlePrefix.prefix)
-        )}
-      >
-        {titlePrefix.prefix}
-      </span>
-      {titlePrefix.rest}
+      {titleTags.tags.map(tag => (
+        <span
+          key={tag}
+          role="button"
+          className={clsx(
+            'inline-block align-middle mr-1 px-1 rounded text-[10px] leading-4 font-medium whitespace-nowrap cursor-pointer hover:underline hover:ring-1 hover:ring-current',
+            prefixColorPalette.classesFor(tag)
+          )}
+          title={`Filter by #${tag} (Shift+click: add to current search)`}
+          onClick={(e) =>
+          {
+            // Filter by this tag instead of opening/selecting the row
+            e.stopPropagation();
+            e.preventDefault();
+            onFilterByTag?.(tag, e.shiftKey);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          {tag}
+        </span>
+      ))}
+      {titleTags.name}
     </>
   ) : displayTitle;
 
@@ -844,6 +859,8 @@ interface BookmarkTreeProps {
   onMoveHighlightReady?: (moveHighlight: MoveBookmarkHighlight) => void;
   keepBookmarkNames?: boolean;
   prefixTags?: boolean;
+  // Tag chip clicked in a row: search for that tag (append = add to the current search)
+  onFilterByTag?: (tag: string, append: boolean) => void;
   filterLiveTabs?: boolean;
   filterText?: string;
   activeSpace?: Space | null;
@@ -852,7 +869,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, onFilterByTag, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -1080,6 +1097,15 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
 
   const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null);
   const [creatingBookmarkParentId, setCreatingBookmarkParentId] = useState<string | null>(null);
+
+  // Tag suggestions for the edit dialog: tags of the edited/created item's folder first.
+  // Only walked while the dialog is open with tags on.
+  const tagSuggestionParentId = creatingBookmarkParentId ?? editingNode?.parentId ?? null;
+  const isEditDialogOpen = editingNode !== null || creatingBookmarkParentId !== null;
+  const existingTags = useMemo(
+    () => (prefixTags && isEditDialogOpen ? collectTitleTags(bookmarks, tagSuggestionParentId) : []),
+    [prefixTags, isEditDialogOpen, bookmarks, tagSuggestionParentId]
+  );
   const [showSpaceFolderPicker, setShowSpaceFolderPicker] = useState(false);
   const [moveToSpaceDialog, setMoveToSpaceDialog] = useState<{
     isOpen: boolean;
@@ -2337,6 +2363,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               liveTitle={getBookmarkLiveTitle(node.id)}
               keepBookmarkNames={keepBookmarkNames}
               prefixTags={prefixTags}
+              onFilterByTag={onFilterByTag}
               isSelected={isBookmarkSelected(node.id)}
               highlightedBookmarkId={highlightedBookmarkId}
               checkIsLoaded={isBookmarkLoaded}
@@ -2403,6 +2430,8 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
         isOpen={editingNode !== null || creatingBookmarkParentId !== null}
         node={editingNode}
         createInParentId={creatingBookmarkParentId}
+        nameTags={prefixTags}
+        existingTags={existingTags}
         onSave={handleSaveBookmark}
         onCreate={async (parentId, title, url) => {
           const { node: newNode, error } = await createBookmark(parentId, title, url);
