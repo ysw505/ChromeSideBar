@@ -100,6 +100,57 @@ const isDescendant = (
   return sourceNode ? checkDescendants(sourceNode) : false;
 };
 
+// Find the first bookmark (not folder) in display order: depth-first, top to bottom,
+// descending only into folders that are expanded (collapsed folders hide their children)
+const findFirstVisibleBookmark = (
+  nodes: chrome.bookmarks.BookmarkTreeNode[],
+  isExpanded: (folderId: string) => boolean
+): chrome.bookmarks.BookmarkTreeNode | undefined =>
+{
+  // Walk rows in the order they are rendered
+  for (const node of nodes)
+  {
+    if (node.url)
+    {
+      return node;
+    }
+    if (node.children && isExpanded(node.id))
+    {
+      const found = findFirstVisibleBookmark(node.children, isExpanded);
+      if (found)
+      {
+        return found;
+      }
+    }
+  }
+  return undefined;
+};
+
+// Open a bookmark the way the selected open mode does on a plain click.
+// Arc mode goes through onOpenBookmark (tab association / reuse of an existing tab).
+const openBookmarkInMode = (
+  bookmarkId: string,
+  url: string,
+  bookmarkOpenMode: BookmarkOpenMode,
+  onOpenBookmark: ((bookmarkId: string, url: string) => void) | undefined,
+  windowId: number | undefined
+) =>
+{
+  if (bookmarkOpenMode === 'arc')
+  {
+    onOpenBookmark?.(bookmarkId, url);
+  }
+  else if (bookmarkOpenMode === 'activeTab')
+  {
+    // Replace current tab with bookmark
+    chrome.tabs.update({ url });
+  }
+  else
+  {
+    // newTab: open in new active tab
+    chrome.tabs.create({ url, active: true, windowId: windowId ?? undefined });
+  }
+};
 
 // --- Bookmark Row (Pure UI) ---
 interface BookmarkRowProps {
@@ -284,28 +335,13 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
       return;
     }
 
-    // Plain click: perform action for bookmarks
-    // Arc mode: open/activate bookmark on single click if setting enabled
-    if (node.url && bookmarkOpenMode === 'arc' && onOpenBookmark && arcSingleClickOpensTab)
+    // Plain click: open the bookmark per the open mode.
+    // Arc mode only opens/activates on single click if that setting is enabled.
+    if (!node.url || (bookmarkOpenMode === 'arc' && !arcSingleClickOpensTab))
     {
-      onOpenBookmark(node.id, node.url);
       return;
     }
-
-    // Non-Arc modes: open bookmark based on setting
-    if (node.url && bookmarkOpenMode !== 'arc')
-    {
-      if (bookmarkOpenMode === 'activeTab')
-      {
-        // Replace current tab with bookmark
-        chrome.tabs.update({ url: node.url });
-      }
-      else
-      {
-        // newTab: open in new active tab
-        chrome.tabs.create({ url: node.url, active: true, windowId: windowId ?? undefined });
-      }
-    }
+    openBookmarkInMode(node.id, node.url, bookmarkOpenMode, onOpenBookmark, windowId);
   };
 
   const icon = isFolder ? (
@@ -765,6 +801,9 @@ const BookmarkItem = (props: BookmarkRowProps) => {
   );
 };
 
+// Opens the first bookmark shown for the given search text; returns false when none is shown
+export type OpenFirstVisibleBookmark = (filterText: string) => boolean;
+
 interface BookmarkTreeProps {
   onPin?: (url: string, title: string, faviconUrl?: string) => void;
   onPinMultiple?: (pins: Array<{ url: string; title: string; faviconUrl?: string }>) => void;
@@ -774,6 +813,8 @@ interface BookmarkTreeProps {
   bookmarkOpenMode?: BookmarkOpenMode;
   arcSingleClickOpensTab?: boolean;
   onResolverReady?: (resolver: ResolveBookmarkDropTarget) => void;
+  // Receives a function that opens the first visible bookmark for a search text (Enter in search box)
+  onOpenFirstVisibleReady?: (openFirstVisible: OpenFirstVisibleBookmark) => void;
   keepBookmarkNames?: boolean;
   filterLiveTabs?: boolean;
   filterText?: string;
@@ -783,7 +824,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, keepBookmarkNames = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, keepBookmarkNames = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -955,17 +996,24 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     visibleBookmarks = [spaceFolder];
   }
 
-  // Apply all filters in a single pass
-  const hasFilters = filterLiveTabs || filterText.trim();
-  if (hasFilters)
+  // Apply all filters in a single pass. Also used by Enter-in-search, which passes the
+  // input's current text (the filterText prop is debounced and may lag behind).
+  const rootBookmarks = visibleBookmarks;
+  const applyFilters = (text: string): chrome.bookmarks.BookmarkTreeNode[] =>
   {
-    visibleBookmarks = filterBookmarksRecursive(visibleBookmarks, (node) =>
+    if (!filterLiveTabs && !text.trim())
+    {
+      return rootBookmarks;
+    }
+    return filterBookmarksRecursive(rootBookmarks, (node) =>
     {
       if (filterLiveTabs && !isBookmarkLoaded(node.id)) return false;
-      if (filterText.trim() && !matchesFilter(node.title, node.url ?? '', filterText)) return false;
+      if (text.trim() && !matchesFilter(node.title, node.url ?? '', text)) return false;
       return true;
     });
-  }
+  };
+  const hasFilters = filterLiveTabs || filterText.trim();
+  visibleBookmarks = applyFilters(filterText);
 
   const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
   const [expandedStateLoaded, setExpandedStateLoaded] = useState(false);
@@ -1292,6 +1340,43 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
   {
     onResolverReady?.(resolveBookmarkDropTarget);
   }, [onResolverReady, resolveBookmarkDropTarget]);
+
+  // Arc-style open of a bookmark row: associate/reuse its tab within the active space
+  const handleOpenBookmark = useCallback((bookmarkId: string, url: string) =>
+  {
+    openBookmarkTab(bookmarkId, url, activeSpace?.id);
+  }, [openBookmarkTab, activeSpace?.id]);
+
+  // Enter in search box: open the first bookmark row shown for that text, as a click on it would.
+  // Rebuilt every render (reads the latest tree), exposed to the parent through a stable wrapper.
+  const openFirstVisibleRef = useRef<OpenFirstVisibleBookmark>(() => false);
+  openFirstVisibleRef.current = (text: string) =>
+  {
+    // Nothing is shown while the space's folder is missing
+    if (isSpaceFolderMissing)
+    {
+      return false;
+    }
+    const first = findFirstVisibleBookmark(applyFilters(text), (folderId) => !!expandedState[folderId]);
+    if (!first?.url)
+    {
+      return false;
+    }
+    if (import.meta.env.DEV)
+    {
+      console.log('[BookmarkTree] Enter opens first visible bookmark:', first.id, first.title);
+    }
+    openBookmarkInMode(first.id, first.url, bookmarkOpenMode, handleOpenBookmark, windowId ?? undefined);
+    return true;
+  };
+  const openFirstVisibleBookmark = useCallback<OpenFirstVisibleBookmark>(
+    (text) => openFirstVisibleRef.current(text),
+    []
+  );
+  useEffect(() =>
+  {
+    onOpenFirstVisibleReady?.(openFirstVisibleBookmark);
+  }, [onOpenFirstVisibleReady, openFirstVisibleBookmark]);
 
   // Set up external link drop handling (web page links)
   useExternalLinkDrop({
@@ -2155,7 +2240,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               checkIsAudible={isBookmarkAudible}
               checkIsActive={isBookmarkActive}
               getLiveTitle={getBookmarkLiveTitle}
-              onOpenBookmark={(bookmarkId, url) => openBookmarkTab(bookmarkId, url, activeSpace?.id)}
+              onOpenBookmark={handleOpenBookmark}
               onCloseBookmark={handleCloseBookmarkTab}
               onOpenAsTabGroup={!useSpaces ? handleOpenAsTabGroup : undefined}
               onOpenAllTabs={handleOpenAllTabs}

@@ -19,6 +19,8 @@ interface ToolbarProps
   // Text filter props
   filterText: string;
   onFilterTextChange: (text: string) => void;
+  // Enter with search text: open the first visible bookmark for that text; true if one was opened
+  onSubmitFilter?: (text: string) => boolean;
   savedFilters: string[];
   recentFilters: string[];
   onSaveFilter: (text: string) => void;
@@ -68,6 +70,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   audioButtonRef,
   filterText,
   onFilterTextChange,
+  onSubmitFilter,
   savedFilters,
   recentFilters,
   onSaveFilter,
@@ -476,6 +479,28 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     return () => chrome.commands.onCommand.removeListener(handleCommand);
   }, [focusInputWithCursorAtEnd]);
 
+  // Enter with search text: open the first visible bookmark, then clear the search.
+  // Uses the input's current text, since the debounced filter may not have caught up yet.
+  const submitFilter = useCallback(() =>
+  {
+    if (!inputValue.trim() || !onSubmitFilter)
+    {
+      return;
+    }
+
+    // Opened a bookmark: clear the search box and the filter
+    if (onSubmitFilter(inputValue))
+    {
+      if (debounceTimerRef.current)
+      {
+        clearTimeout(debounceTimerRef.current);
+      }
+      setInputValue('');
+      setSessionRecentEntry(null);
+      onFilterTextChange('');
+    }
+  }, [inputValue, onSubmitFilter, onFilterTextChange]);
+
   // Handle input keydown for ArrowDown to open dropdown, Enter to commit
   const handleInputKeydown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) =>
   {
@@ -488,8 +513,9 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     {
       e.preventDefault();
       commitToRecent();
+      submitFilter();
     }
-  }, [commitToRecent]);
+  }, [commitToRecent, submitFilter]);
 
   // Handle input blur to commit to recent
   const handleInputBlur = useCallback(() =>

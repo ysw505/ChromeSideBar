@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { BookmarkTree } from './components/BookmarkTree';
+import { BookmarkTree, OpenFirstVisibleBookmark } from './components/BookmarkTree';
 import { TabList, ExternalDropTarget, ResolveBookmarkDropTarget } from './components/TabList';
 import { PinnedBar } from './components/PinnedBar';
 import { Toolbar } from './components/Toolbar';
@@ -67,6 +67,7 @@ interface SidebarContentProps
   bookmarkOpenMode: BookmarkOpenMode;
   arcSingleClickOpensTab: boolean;
   onResolverReady: (fn: ResolveBookmarkDropTarget) => void;
+  onOpenFirstVisibleReady: (fn: OpenFirstVisibleBookmark) => void;
   keepBookmarkNames: boolean;
   filterLiveTabs: boolean;
   filterText: string;
@@ -96,6 +97,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   bookmarkOpenMode,
   arcSingleClickOpensTab,
   onResolverReady,
+  onOpenFirstVisibleReady,
   keepBookmarkNames,
   filterLiveTabs,
   filterText,
@@ -199,6 +201,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={onResolverReady}
+        onOpenFirstVisibleReady={onOpenFirstVisibleReady}
         keepBookmarkNames={keepBookmarkNames}
         filterLiveTabs={filterLiveTabs}
         filterText={filterText}
@@ -747,6 +750,8 @@ function App() {
   const [spaceToDelete, setSpaceToDelete] = useState<Space | null>(null);
   const [showSpaceDeleteDialog, setShowSpaceDeleteDialog] = useState(false);
   const bookmarkDropResolverRef = useRef<ResolveBookmarkDropTarget | null>(null);
+  // Set by the mounted BookmarkTree: opens its first visible bookmark (Enter in search box)
+  const openFirstVisibleBookmarkRef = useRef<OpenFirstVisibleBookmark | null>(null);
   const newsHoverTimerRef = useRef<number | null>(null);
   // Clean up hover timer on unmount
   useEffect(() =>
@@ -799,6 +804,12 @@ function App() {
   // Filter handlers
   const handleFilterTextChange = (text: string) => {
     setFilterText(text);
+  };
+
+  // Enter in search box: open the first bookmark the tree shows for this text (Toolbar clears on success)
+  const handleSubmitFilter = (text: string): boolean =>
+  {
+    return openFirstVisibleBookmarkRef.current?.(text) ?? false;
   };
 
   const handleSaveFilter = (text: string) => {
@@ -1090,6 +1101,7 @@ function App() {
           audioButtonRef={audioButtonRef}
           filterText={filterText}
           onFilterTextChange={handleFilterTextChange}
+          onSubmitFilter={handleSubmitFilter}
           savedFilters={savedFilters}
           recentFilters={recentFilters}
           onSaveFilter={handleSaveFilter}
@@ -1278,6 +1290,7 @@ function App() {
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={(fn) => { bookmarkDropResolverRef.current = fn; }}
+        onOpenFirstVisibleReady={(fn) => { openFirstVisibleBookmarkRef.current = fn; }}
         keepBookmarkNames={keepBookmarkNames}
         filterLiveTabs={showFilterArea && filterLiveTabs}
         filterText={filterText}
