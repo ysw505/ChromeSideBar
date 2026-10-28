@@ -67,6 +67,7 @@ interface SidebarContentProps
   bookmarkOpenMode: BookmarkOpenMode;
   arcSingleClickOpensTab: boolean;
   onResolverReady: (fn: ResolveBookmarkDropTarget) => void;
+  keepBookmarkNames: boolean;
   filterLiveTabs: boolean;
   filterText: string;
   tabGroupDisplayOrder: TabGroupDisplayOrder;
@@ -95,6 +96,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   bookmarkOpenMode,
   arcSingleClickOpensTab,
   onResolverReady,
+  keepBookmarkNames,
   filterLiveTabs,
   filterText,
   tabGroupDisplayOrder,
@@ -197,6 +199,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={onResolverReady}
+        keepBookmarkNames={keepBookmarkNames}
         filterLiveTabs={filterLiveTabs}
         filterText={filterText}
         activeSpace={activeSpace}
@@ -552,6 +555,12 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
+  // Keep bookmark names in the tree even while the bookmark's tab is open (no live page title)
+  const [keepBookmarkNames, setKeepBookmarkNames] = useChromeLocalStorage(
+    'sidebar-keep-bookmark-names',
+    false,
+    { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+  );
   const [tabGroupDisplayOrder, setTabGroupDisplayOrder] = useLocalStorage<TabGroupDisplayOrder>(
     'sidebar-tab-group-display-order',
     'groupsFirst',
@@ -774,6 +783,7 @@ function App() {
     setHideOtherBookmarks(newSettings.hideOtherBookmarks);
     setFlattenBookmarksBar(newSettings.flattenBookmarksBar);
     setFocusSearchOnOpen(newSettings.focusSearchOnOpen);
+    setKeepBookmarkNames(newSettings.keepBookmarkNames);
     setTabGroupDisplayOrder(newSettings.tabGroupDisplayOrder);
     setPinnedIconSize(newSettings.pinnedIconSize);
     setBookmarkOpenMode(newSettings.bookmarkOpenMode);
@@ -994,6 +1004,7 @@ function App() {
           hideOtherBookmarks,
           flattenBookmarksBar,
           focusSearchOnOpen,
+          keepBookmarkNames,
           tabGroupDisplayOrder,
           pinnedIconSize,
           bookmarkOpenMode,
@@ -1267,6 +1278,7 @@ function App() {
         bookmarkOpenMode={bookmarkOpenMode}
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={(fn) => { bookmarkDropResolverRef.current = fn; }}
+        keepBookmarkNames={keepBookmarkNames}
         filterLiveTabs={showFilterArea && filterLiveTabs}
         filterText={filterText}
         tabGroupDisplayOrder={tabGroupDisplayOrder}

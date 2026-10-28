@@ -19,6 +19,7 @@ export interface SettingsValues {
   spaceColorAlpha: number;  // 1-100 percent
   followActiveTab: FollowActiveTabMode;
   focusSearchOnOpen: boolean;  // show + focus the search box each time the side panel opens
+  keepBookmarkNames: boolean;  // keep the bookmark's own name even while its tab is open (no live page title)
 }
 
 interface SettingsDialogProps {
@@ -50,6 +51,7 @@ export function SettingsDialog({
   const [tempSpaceColorAlpha, setTempSpaceColorAlpha] = useState(settings.spaceColorAlpha);
   const [tempFollowActiveTab, setTempFollowActiveTab] = useState(settings.followActiveTab);
   const [tempFocusSearchOnOpen, setTempFocusSearchOnOpen] = useState(settings.focusSearchOnOpen);
+  const [tempKeepBookmarkNames, setTempKeepBookmarkNames] = useState(settings.keepBookmarkNames);
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
 
   // Track previous isOpen to detect when dialog opens
@@ -80,6 +82,7 @@ export function SettingsDialog({
       setTempSpaceColorAlpha(settings.spaceColorAlpha);
       setTempFollowActiveTab(settings.followActiveTab);
       setTempFocusSearchOnOpen(settings.focusSearchOnOpen);
+      setTempKeepBookmarkNames(settings.keepBookmarkNames);
       setActiveTab('appearance');
     }
     wasOpen.current = isOpen;
@@ -100,6 +103,7 @@ export function SettingsDialog({
       spaceColorAlpha: tempSpaceColorAlpha,
       followActiveTab: tempFollowActiveTab,
       focusSearchOnOpen: tempFocusSearchOnOpen,
+      keepBookmarkNames: tempKeepBookmarkNames,
     });
   };
 
@@ -212,6 +216,22 @@ export function SettingsDialog({
                 {tempFlattenBookmarksBar
                   ? 'Items inside "Bookmarks Bar" are listed directly, without the folder row (Arc-style)'
                   : '"Bookmarks Bar" is shown as a folder you expand'}
+              </p>
+            </div>
+
+            {/* Keep the bookmark's own name instead of the live page title */}
+            <div>
+              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tempKeepBookmarkNames}
+                  onChange={(e) => setTempKeepBookmarkNames(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Keep bookmark names for open bookmarks
+              </label>
+              <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
+                Don't swap in the page title while the bookmark's tab is open.
               </p>
             </div>
 
