@@ -10,10 +10,13 @@ import {
   saveTabAssociationBackup,
   removeTabAssociationBackup,
 } from '../utils/tabAssociations';
+import { SameUrlTabFinder } from '../utils/sameUrlTab';
 
 // Helper to create item keys
 const makeBookmarkKey = (bookmarkId: string) => `bookmark-${bookmarkId}`;
 const makePinnedKey = (pinnedId: string) => `pinned-${pinnedId}`;
+
+const sameUrlTabFinder = new SameUrlTabFinder();
 
 interface BookmarkTabsContextValue
 {
@@ -480,6 +483,93 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     });
   }, [handleError, storeAssociation, currentWindowId]);
 
+  // Associate an already-open tab with an item by raw itemKey (bookmark or
+  // pinned). Mirrors createItemTab's registration + grouping so the tab ends
+  // up in the item's Space. Pinned items have no spaceId, so they are left
+  // where they are.
+  const adoptExistingTab = useCallback(async (
+    tabId: number,
+    itemKey: string,
+    spaceId?: string
+  ): Promise<void> =>
+  {
+    // Store association
+    await storeAssociation(tabId, itemKey);
+
+    // Register the tab's Space with background and ask it to group the tab there
+    if (spaceId && currentWindowId !== null)
+    {
+      tabSpaceRegistryProxy.register(currentWindowId, tabId, spaceId);
+
+      chrome.runtime.sendMessage({
+        action: 'queue-tab-for-grouping',
+        tabId,
+        windowId: currentWindowId,
+        spaceId
+      });
+    }
+
+    setItemToTab((prev) =>
+    {
+      const newMap = new Map(prev);
+      newMap.set(itemKey, tabId);
+      return newMap;
+    });
+    setTabToItem((prev) =>
+    {
+      const newMap = new Map(prev);
+      newMap.set(tabId, itemKey);
+      return newMap;
+    });
+  }, [storeAssociation, currentWindowId]);
+
+  // Reuse an unassociated tab in this window that already shows the item's
+  // URL (e.g. opened from the omnibox or a link), instead of creating a
+  // duplicate. Returns the adopted tab ID, or undefined if none matched.
+  const adoptSameUrlTab = useCallback(async (
+    itemKey: string,
+    url: string,
+    spaceId?: string
+  ): Promise<number | undefined> =>
+  {
+    if (currentWindowId === null) return undefined;
+
+    const tabs = await chrome.tabs.query({ windowId: currentWindowId });
+    const associatedTabIds = new Set(tabToItem.keys());
+    const tab = sameUrlTabFinder.find(tabs, url, associatedTabIds);
+    if (tab?.id === undefined) return undefined;
+
+    const tabId = tab.id;
+    if (import.meta.env.DEV)
+    {
+      console.log(`[BookmarkTabs] adopting same-URL tab ${tabId} for ${itemKey}`);
+    }
+
+    await adoptExistingTab(tabId, itemKey, spaceId);
+
+    return new Promise((resolve) =>
+    {
+      chrome.tabs.update(tabId, { active: true }, () =>
+      {
+        handleError('activate');
+        resolve(tabId);
+      });
+    });
+  }, [currentWindowId, tabToItem, adoptExistingTab, handleError]);
+
+  // Open an item that has no live tab: adopt a same-URL tab if there is one,
+  // otherwise create a new tab
+  const openUnloadedItemTab = useCallback(async (
+    itemKey: string,
+    url: string,
+    spaceId?: string
+  ): Promise<number | undefined> =>
+  {
+    const adoptedTabId = await adoptSameUrlTab(itemKey, url, spaceId);
+    if (adoptedTabId !== undefined) return adoptedTabId;
+    return createItemTab(itemKey, url, spaceId);
+  }, [adoptSameUrlTab, createItemTab]);
+
   // Open a tab for an item (bookmark or pinned site)
   // Returns the tab ID (existing or newly created), or undefined if failed
   const openItemTab = useCallback(async (
@@ -498,7 +588,7 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
         {
           if (chrome.runtime.lastError || !tab)
           {
-            createItemTab(itemKey, url, spaceId).then(resolve);
+            openUnloadedItemTab(itemKey, url, spaceId).then(resolve);
           }
           else
           {
@@ -513,9 +603,9 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     }
     else
     {
-      return createItemTab(itemKey, url, spaceId);
+      return openUnloadedItemTab(itemKey, url, spaceId);
     }
-  }, [itemToTab, createItemTab, handleError]);
+  }, [itemToTab, openUnloadedItemTab, handleError]);
 
   // Close an item's associated tab
   const closeItemTab = useCallback((itemKey: string): void =>
@@ -585,36 +675,8 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     spaceId?: string
   ): Promise<void> =>
   {
-    const itemKey = makeBookmarkKey(bookmarkId);
-
-    // Store association
-    await storeAssociation(tabId, itemKey);
-
-    if (spaceId && currentWindowId !== null)
-    {
-      tabSpaceRegistryProxy.register(currentWindowId, tabId, spaceId);
-
-      chrome.runtime.sendMessage({
-        action: 'queue-tab-for-grouping',
-        tabId,
-        windowId: currentWindowId,
-        spaceId
-      });
-    }
-
-    setItemToTab((prev) =>
-    {
-      const newMap = new Map(prev);
-      newMap.set(itemKey, tabId);
-      return newMap;
-    });
-    setTabToItem((prev) =>
-    {
-      const newMap = new Map(prev);
-      newMap.set(tabId, itemKey);
-      return newMap;
-    });
-  }, [storeAssociation, currentWindowId]);
+    await adoptExistingTab(tabId, makeBookmarkKey(bookmarkId), spaceId);
+  }, [adoptExistingTab]);
 
   // Restore an item association by raw itemKey (for undo — works for both bookmark and pinned)
   const restoreItemAssociation = useCallback(async (tabId: number, itemKey: string): Promise<void> =>

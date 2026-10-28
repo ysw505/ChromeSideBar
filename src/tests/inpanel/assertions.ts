@@ -401,3 +401,39 @@ export function assertTabInOtherWindow(tabRef: string): TestStep
     },
   };
 }
+
+/** Confirms two refs name the very same tab - e.g. that opening a bookmark reused an already-open tab rather than creating a new one. */
+export function assertSameTab(refA: string, refB: string): TestStep
+{
+  return {
+    kind: 'assert',
+    label: `Tabs "${refA}" and "${refB}" are the same tab`,
+    run: async (ctx) =>
+    {
+      const tabIdA = resolveTabId(ctx, refA);
+      const tabIdB = resolveTabId(ctx, refB);
+      if (tabIdA !== tabIdB)
+      {
+        throw new Error(`expected "${refA}" (id ${tabIdA}) and "${refB}" (id ${tabIdB}) to be the same tab`);
+      }
+    },
+  };
+}
+
+/** Confirms how many tabs in the test window show a URL (committed or still loading) - catches a duplicate tab being opened for the same page. */
+export function assertTabCountWithUrl(url: string, expected: number): TestStep
+{
+  return {
+    kind: 'assert',
+    label: `Exactly ${expected} tab(s) show ${url}`,
+    run: async (ctx) =>
+    {
+      const tabs = await chrome.tabs.query({ windowId: ctx.windowId });
+      const matching = tabs.filter(tab => tab.url === url || tab.pendingUrl === url);
+      if (matching.length !== expected)
+      {
+        throw new Error(`expected ${expected} tab(s) showing ${url}, found ${matching.length} (ids [${matching.map(tab => tab.id).join(', ')}])`);
+      }
+    },
+  };
+}

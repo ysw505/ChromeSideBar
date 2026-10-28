@@ -88,6 +88,7 @@ Which cases below are automated by the DEV-only in-panel test runner (`src/tests
 | F.2  | Yes     |
 | F.3  | Yes     |
 | F.4  | Yes     |
+| G.1  | Yes     |
 | P.1  | Yes     |
 | P.2  | Yes     |
 | P.3  | Yes     |
@@ -641,6 +642,20 @@ Adjacent behaviour that shouldn't break. Automated in `src/tests/inpanel/cases/s
 | 2   | Open a bookmark tab in Space A, then right-click the bookmark → "Move To Tabs"                                | Bookmark shows as not loaded; the tab stays open, still in Space A's Chrome group                 |
 | 3   | With Space B active, create a brand-new tab (Cmd+T)                                                           | The tab joins Space B's Chrome group                                                              |
 | 4   | Open a bookmark tab three collapsed folders deep in Space B, activate it, switch the sidebar to Space A, then click "Show active tab" | Switches to Space B, all three folders expand, and it scrolls to the bookmark row |
+
+---
+
+## Section G - Opening an item reuses a same-URL tab
+
+Clicking a bookmark or pinned site with no live tab first looks for a tab in the current window that already shows the same URL (fragment ignored, query string and scheme kept) and is not associated with any other bookmark/pin. If one exists it is activated and associated instead of opening a duplicate. Automated in `src/tests/inpanel/cases/sectionG.ts`.
+
+### G.1 Opening a bookmark adopts an unassociated tab with the same URL
+
+| Step | Action                                                                  | Expected Result                                                                          |
+| ---- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1    | Type a bookmark's URL into the omnibox (or follow a link) to open it    | A regular tab opens; the bookmark still shows "not loaded"                               |
+| 2    | Click that bookmark in the sidebar                                      | No new tab opens; the existing tab becomes active and the bookmark shows "loaded"        |
+| 3    | Check the tab strip                                                     | Only one tab shows that URL, and it is now in the bookmark's Space group                 |
 
 ---
 
