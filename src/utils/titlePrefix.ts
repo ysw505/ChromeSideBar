@@ -99,6 +99,28 @@ export function formatTitleTags(tags: string[], name: string): string
   return cleanName ? `${hashtags} ${cleanName}` : hashtags;
 }
 
+// Bulk tag edit for one title: drop the `remove` tags, append the `add` tags it lacks,
+// and rebuild it in the canonical "#tag name" form (legacy " · " titles get rewritten too)
+export function retagTitle(title: string, add: string[], remove: Set<string>): string
+{
+  const parsed = parseTitleTags(title);
+  // No tags/name split: either a plain title or one with no name part
+  if (!parsed)
+  {
+    // Tags-only ("#fin #kr") or empty titles have no name to keep; adding tags would
+    // still leave a tags-only title that shows as plain text, so leave them untouched
+    const hasNoName = parseHashtags(title).tags.length > 0 || !title.trim();
+    if (hasNoName || add.length === 0)
+    {
+      return title;
+    }
+    return formatTitleTags(add, title);
+  }
+  const kept = parsed.tags.filter(tag => !remove.has(tag));
+  const added = add.filter(tag => !parsed.tags.includes(tag));
+  return formatTitleTags([...kept, ...added], parsed.name);
+}
+
 // How often each tag is used, with a stable "most used first, then A-Z" order
 class TagUsageCounts
 {

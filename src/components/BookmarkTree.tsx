@@ -16,12 +16,13 @@ import { DropIndicators } from './DropIndicators';
 import { ExternalDropTarget, ResolveBookmarkDropTarget } from './TabList';
 import { BookmarkOpenMode } from './SettingsDialog';
 import { BookmarkEditModal } from './BookmarkEditModal';
+import { BookmarkTagsBulkDialog } from './BookmarkTagsBulkDialog';
 import { BookmarkCreateFolderModal } from './BookmarkCreateFolderModal';
 import * as ContextMenu from './menu/ContextMenu';
 import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
-import { parseTitleTags, collectTitleTags, prefixColorPalette } from '../utils/titlePrefix';
+import { parseTitleTags, collectTitleTags, retagTitle, prefixColorPalette } from '../utils/titlePrefix';
 import {
   Globe,
   Trash,
@@ -40,7 +41,8 @@ import {
   SquareArrowOutUpRight,
   SquareStack,
   ArrowRightFromLine,
-  Link
+  Link,
+  Tags
 } from 'lucide-react';
 import { getRandomGroupColor } from '../utils/groupColors';
 import { SpaceFolderIcon } from './SpaceFolderIcon';
@@ -216,6 +218,7 @@ interface BookmarkRowProps {
   onCloseSelectedBookmarks?: () => void;
   onCopyUrl?: (url: string) => void;
   onCopyUrls?: () => void;
+  onEditSelectedTags?: () => void;  // only passed with the tags setting on
   // Drag-drop attributes
   attributes?: DraggableAttributes;
   listeners?: SyntheticListenerMap;
@@ -277,6 +280,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   onCloseSelectedBookmarks,
   onCopyUrl,
   onCopyUrls,
+  onEditSelectedTags,
   attributes,
   listeners,
   windowId,
@@ -534,7 +538,12 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
                   <Link size={14} className="mr-2" /> Copy URLs
                 </ContextMenu.Item>
               )}
-              {hasSelectedBookmarks && (onPin || onCopyUrls) && (
+              {hasSelectedBookmarks && onEditSelectedTags && (
+                <ContextMenu.Item onSelect={onEditSelectedTags}>
+                  <Tags size={14} className="mr-2" /> Edit Tags…
+                </ContextMenu.Item>
+              )}
+              {hasSelectedBookmarks && (onPin || onCopyUrls || onEditSelectedTags) && (
                 <ContextMenu.Separator />
               )}
               <ContextMenu.Item onSelect={() => onOpenInNewTabs?.(node.url || '')}>
@@ -1098,10 +1107,17 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
   const [creatingFolderParentId, setCreatingFolderParentId] = useState<string | null>(null);
   const [creatingBookmarkParentId, setCreatingBookmarkParentId] = useState<string | null>(null);
 
-  // Tag suggestions for the edit dialog: tags of the edited/created item's folder first.
-  // Only walked while the dialog is open with tags on.
-  const tagSuggestionParentId = creatingBookmarkParentId ?? editingNode?.parentId ?? null;
-  const isEditDialogOpen = editingNode !== null || creatingBookmarkParentId !== null;
+  // Bulk "Edit Tags…" dialog target: the selected bookmarks plus how many folders were left out
+  const [bulkTagsTarget, setBulkTagsTarget] = useState<{
+    nodes: chrome.bookmarks.BookmarkTreeNode[];
+    folderCount: number;
+  } | null>(null);
+
+  // Tag suggestions for the edit dialogs: tags of the edited/created item's folder first
+  // (bulk dialog: the first selected bookmark's folder). Only walked while a dialog is open with tags on.
+  const tagSuggestionParentId = creatingBookmarkParentId ?? editingNode?.parentId
+    ?? bulkTagsTarget?.nodes[0]?.parentId ?? null;
+  const isEditDialogOpen = editingNode !== null || creatingBookmarkParentId !== null || bulkTagsTarget !== null;
   const existingTags = useMemo(
     () => (prefixTags && isEditDialogOpen ? collectTitleTags(bookmarks, tagSuggestionParentId) : []),
     [prefixTags, isEditDialogOpen, bookmarks, tagSuggestionParentId]
@@ -1936,6 +1952,47 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     }
   }, [getSelectedItems, findNode]);
 
+  // Open the bulk "Edit Tags…" dialog for the selected bookmarks (folders are ignored)
+  const openBulkTagsDialog = useCallback(() =>
+  {
+    const nodes: chrome.bookmarks.BookmarkTreeNode[] = [];
+    let folderCount = 0;
+    // Split the selection into bookmark nodes and a folder count
+    for (const item of getSelectedItems())
+    {
+      if (item.type === 'folder')
+      {
+        folderCount++;
+        continue;
+      }
+      const node = findNode(item.id);
+      if (node?.url) nodes.push(node);
+    }
+    if (nodes.length > 0)
+    {
+      setBulkTagsTarget({ nodes, folderCount });
+    }
+  }, [getSelectedItems, findNode]);
+
+  // Apply the bulk tag edit: rewrite each selected bookmark's title (no undo, same as the single Edit dialog)
+  const handleApplyBulkTags = useCallback((add: string[], remove: Set<string>) =>
+  {
+    let changedCount = 0;
+    // Retag each bookmark; tags-only titles come back unchanged and are not counted
+    for (const node of bulkTagsTarget?.nodes ?? [])
+    {
+      if (!node.url) continue;
+      const newTitle = retagTitle(node.title, add, remove);
+      if (newTitle !== node.title)
+      {
+        updateBookmark(node.id, newTitle, node.url);
+        changedCount++;
+      }
+    }
+    onShowToast?.(`Tags updated on ${changedCount} ${changedCount === 1 ? 'bookmark' : 'bookmarks'}`);
+    clearSelection();
+  }, [bulkTagsTarget, updateBookmark, onShowToast, clearSelection]);
+
   // Update multi-drag info when bookmark drag starts
   useEffect(() =>
   {
@@ -2400,6 +2457,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               onCloseSelectedBookmarks={handleCloseSelectedBookmarks}
               onCopyUrl={handleCopyUrl}
               onCopyUrls={handleCopyUrls}
+              onEditSelectedTags={prefixTags ? openBulkTagsDialog : undefined}
               windowId={windowId ?? undefined}
             />
           );
@@ -2425,6 +2483,15 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
       {hasVisibleBookmarks && (
         <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
       )}
+
+      <BookmarkTagsBulkDialog
+        isOpen={bulkTagsTarget !== null}
+        nodes={bulkTagsTarget?.nodes ?? []}
+        ignoredFolderCount={bulkTagsTarget?.folderCount ?? 0}
+        existingTags={existingTags}
+        onApply={handleApplyBulkTags}
+        onClose={() => setBulkTagsTarget(null)}
+      />
 
       <BookmarkEditModal
         isOpen={editingNode !== null || creatingBookmarkParentId !== null}
