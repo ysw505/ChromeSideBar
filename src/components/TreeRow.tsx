@@ -6,7 +6,7 @@ import { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities';
 import { LAYOUT, getIndentStyle } from '../utils/indent';
 
 // Shared ring style for hover and highlighted states
-const RING_HIGHLIGHT = 'ring-2 ring-inset ring-gray-300 dark:ring-gray-600';
+export const RING_HIGHLIGHT = 'ring-2 ring-inset ring-gray-300 dark:ring-gray-600';
 const RING_HIGHLIGHT_HOVER = 'hover:ring-2 hover:ring-inset hover:ring-gray-300 dark:hover:ring-gray-600';
 
 export interface TreeRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {

@@ -21,6 +21,8 @@ interface ToolbarProps
   onFilterTextChange: (text: string) => void;
   // Enter with search text: open the first visible bookmark for that text; true if one was opened
   onSubmitFilter?: (text: string) => boolean;
+  // Arrow keys with search text: move the Enter target highlight (1 = down, -1 = up); true if handled
+  onMoveHighlight?: (delta: 1 | -1) => boolean;
   savedFilters: string[];
   recentFilters: string[];
   onSaveFilter: (text: string) => void;
@@ -71,6 +73,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   filterText,
   onFilterTextChange,
   onSubmitFilter,
+  onMoveHighlight,
   savedFilters,
   recentFilters,
   onSaveFilter,
@@ -501,10 +504,17 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     }
   }, [inputValue, onSubmitFilter, onFilterTextChange]);
 
-  // Handle input keydown for ArrowDown to open dropdown, Enter to commit
+  // Handle input keydown: arrows move the Enter target (with text) or open the dropdown (empty), Enter commits
   const handleInputKeydown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) =>
   {
-    if (e.key === 'ArrowDown')
+    const isArrow = e.key === 'ArrowDown' || e.key === 'ArrowUp';
+    // With search text, arrows pick which bookmark row Enter opens; focus stays in the input
+    if (isArrow && inputValue.trim() && onMoveHighlight)
+    {
+      e.preventDefault();
+      onMoveHighlight(e.key === 'ArrowDown' ? 1 : -1);
+    }
+    else if (e.key === 'ArrowDown')
     {
       e.preventDefault();
       setShowDropdown(true);
@@ -515,7 +525,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
       commitToRecent();
       submitFilter();
     }
-  }, [commitToRecent, submitFilter]);
+  }, [commitToRecent, submitFilter, inputValue, onMoveHighlight]);
 
   // Handle input blur to commit to recent
   const handleInputBlur = useCallback(() =>

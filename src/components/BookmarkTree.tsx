@@ -18,7 +18,7 @@ import { BookmarkOpenMode } from './SettingsDialog';
 import { BookmarkEditModal } from './BookmarkEditModal';
 import { BookmarkCreateFolderModal } from './BookmarkCreateFolderModal';
 import * as ContextMenu from './menu/ContextMenu';
-import { TreeRow } from './TreeRow';
+import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
 import { splitTitlePrefix, prefixColorPalette } from '../utils/titlePrefix';
@@ -101,30 +101,28 @@ const isDescendant = (
   return sourceNode ? checkDescendants(sourceNode) : false;
 };
 
-// Find the first bookmark (not folder) in display order: depth-first, top to bottom,
-// descending only into folders that are expanded (collapsed folders hide their children)
-const findFirstVisibleBookmark = (
+// List the bookmark rows (not folders) in display order: depth-first, top to bottom,
+// descending only into folders that are expanded (collapsed folders hide their children).
+// Enter in the search box and the arrow-key highlight both use this list, so they agree.
+const collectVisibleBookmarks = (
   nodes: chrome.bookmarks.BookmarkTreeNode[],
-  isExpanded: (folderId: string) => boolean
-): chrome.bookmarks.BookmarkTreeNode | undefined =>
+  isExpanded: (folderId: string) => boolean,
+  out: chrome.bookmarks.BookmarkTreeNode[] = []
+): chrome.bookmarks.BookmarkTreeNode[] =>
 {
   // Walk rows in the order they are rendered
   for (const node of nodes)
   {
     if (node.url)
     {
-      return node;
+      out.push(node);
     }
-    if (node.children && isExpanded(node.id))
+    else if (node.children && isExpanded(node.id))
     {
-      const found = findFirstVisibleBookmark(node.children, isExpanded);
-      if (found)
-      {
-        return found;
-      }
+      collectVisibleBookmarks(node.children, isExpanded, out);
     }
   }
-  return undefined;
+  return out;
 };
 
 // Open a bookmark the way the selected open mode does on a plain click.
@@ -222,6 +220,8 @@ interface BookmarkRowProps {
   listeners?: SyntheticListenerMap;
   // Window ID for tab creation
   windowId?: number;
+  // Bookmark row picked with arrow keys in the search box (the row Enter will open)
+  highlightedBookmarkId?: string | null;
 }
 
 // Forward ref to attach to the main div
@@ -253,6 +253,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   keepBookmarkNames = false,
   prefixTags = false,
   isSelected,
+  highlightedBookmarkId,
   onOpenBookmark,
   onCloseBookmark,
   onOpenAsTabGroup,
@@ -493,6 +494,8 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
               data-dnd-id={dndId}
               className={clsx(
                 showDropInto && "bg-blue-100 dark:bg-blue-900/50 ring-2 ring-blue-500",
+                // Arrow-key highlight: the same ring the row shows on mouse hover
+                !showDropInto && highlightedBookmarkId === node.id && RING_HIGHLIGHT,
                 !isSpecialFolder && "touch-none"
               )}
               actions={actions}
@@ -823,6 +826,9 @@ const BookmarkItem = (props: BookmarkRowProps) => {
 // Opens the first bookmark shown for the given search text; returns false when none is shown
 export type OpenFirstVisibleBookmark = (filterText: string) => boolean;
 
+// Moves the arrow-key highlight one bookmark row down (1) or up (-1); returns false when no row is shown
+export type MoveBookmarkHighlight = (delta: 1 | -1) => boolean;
+
 interface BookmarkTreeProps {
   onPin?: (url: string, title: string, faviconUrl?: string) => void;
   onPinMultiple?: (pins: Array<{ url: string; title: string; faviconUrl?: string }>) => void;
@@ -834,6 +840,8 @@ interface BookmarkTreeProps {
   onResolverReady?: (resolver: ResolveBookmarkDropTarget) => void;
   // Receives a function that opens the first visible bookmark for a search text (Enter in search box)
   onOpenFirstVisibleReady?: (openFirstVisible: OpenFirstVisibleBookmark) => void;
+  // Receives a function that moves the highlighted Enter target (arrow keys in search box)
+  onMoveHighlightReady?: (moveHighlight: MoveBookmarkHighlight) => void;
   keepBookmarkNames?: boolean;
   prefixTags?: boolean;
   filterLiveTabs?: boolean;
@@ -844,7 +852,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, keepBookmarkNames = false, prefixTags = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -1367,8 +1375,73 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     openBookmarkTab(bookmarkId, url, activeSpace?.id);
   }, [openBookmarkTab, activeSpace?.id]);
 
-  // Enter in search box: open the first bookmark row shown for that text, as a click on it would.
-  // Rebuilt every render (reads the latest tree), exposed to the parent through a stable wrapper.
+  // Arrow keys in search box pick which bookmark row Enter opens (null = none, Enter opens the first row).
+  // Known edge: pressing an arrow right after typing, before the debounced filterText arrives, highlights
+  // a row of the not-yet-updated list; the highlight then resets when the new filterText comes in.
+  const [highlightedBookmarkId, setHighlightedBookmarkId] = useState<string | null>(null);
+  const isFolderExpanded = (folderId: string) => !!expandedState[folderId];
+
+  // A new search text starts without a highlight
+  useEffect(() =>
+  {
+    setHighlightedBookmarkId(null);
+  }, [filterText]);
+
+  // Drop the highlight when its row is no longer shown (folder collapsed, bookmark removed, ...)
+  const isHighlightShown = highlightedBookmarkId !== null && !isSpaceFolderMissing
+    && collectVisibleBookmarks(visibleBookmarks, isFolderExpanded).some(b => b.id === highlightedBookmarkId);
+  useEffect(() =>
+  {
+    if (highlightedBookmarkId !== null && !isHighlightShown)
+    {
+      setHighlightedBookmarkId(null);
+    }
+  }, [highlightedBookmarkId, isHighlightShown]);
+
+  // Keep the highlighted row on screen
+  useEffect(() =>
+  {
+    if (!highlightedBookmarkId)
+    {
+      return;
+    }
+    const row = bookmarkContainerRef.current?.querySelector(`[data-bookmark-id="${CSS.escape(highlightedBookmarkId)}"]`);
+    row?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedBookmarkId]);
+
+  // Move the highlight within the bookmark rows shown now; stays put at either end (no wrapping).
+  // With no highlight yet, down picks the first row and up does nothing.
+  const moveHighlightRef = useRef<MoveBookmarkHighlight>(() => false);
+  moveHighlightRef.current = (delta) =>
+  {
+    const rows = isSpaceFolderMissing ? [] : collectVisibleBookmarks(visibleBookmarks, isFolderExpanded);
+    if (rows.length === 0)
+    {
+      return false;
+    }
+    const currentIndex = rows.findIndex(b => b.id === highlightedBookmarkId);
+    const nextIndex = currentIndex < 0
+      ? (delta > 0 ? 0 : -1)
+      : Math.min(rows.length - 1, Math.max(0, currentIndex + delta));
+    // Only change state when the move lands on a row
+    if (nextIndex >= 0)
+    {
+      setHighlightedBookmarkId(rows[nextIndex].id);
+    }
+    return true;
+  };
+  const moveHighlight = useCallback<MoveBookmarkHighlight>(
+    (delta) => moveHighlightRef.current(delta),
+    []
+  );
+  useEffect(() =>
+  {
+    onMoveHighlightReady?.(moveHighlight);
+  }, [onMoveHighlightReady, moveHighlight]);
+
+  // Enter in search box: open the highlighted bookmark row if it is shown for that text, else the
+  // first row, as a click on it would. Rebuilt every render (reads the latest tree), exposed to the
+  // parent through a stable wrapper.
   const openFirstVisibleRef = useRef<OpenFirstVisibleBookmark>(() => false);
   openFirstVisibleRef.current = (text: string) =>
   {
@@ -1377,16 +1450,24 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     {
       return false;
     }
-    const first = findFirstVisibleBookmark(applyFilters(text), (folderId) => !!expandedState[folderId]);
-    if (!first?.url)
+    const rows = collectVisibleBookmarks(applyFilters(text), isFolderExpanded);
+    const highlighted = rows.find(b => b.id === highlightedBookmarkId);
+    const target = highlighted ?? rows[0];
+    if (!target?.url)
     {
       return false;
     }
     if (import.meta.env.DEV)
     {
-      console.log('[BookmarkTree] Enter opens first visible bookmark:', first.id, first.title);
+      console.log(
+        highlighted
+          ? '[BookmarkTree] Enter opens highlighted bookmark:'
+          : '[BookmarkTree] Enter opens first visible bookmark:',
+        target.id, target.title
+      );
     }
-    openBookmarkInMode(first.id, first.url, bookmarkOpenMode, handleOpenBookmark, windowId ?? undefined);
+    openBookmarkInMode(target.id, target.url, bookmarkOpenMode, handleOpenBookmark, windowId ?? undefined);
+    setHighlightedBookmarkId(null);
     return true;
   };
   const openFirstVisibleBookmark = useCallback<OpenFirstVisibleBookmark>(
@@ -2257,6 +2338,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               keepBookmarkNames={keepBookmarkNames}
               prefixTags={prefixTags}
               isSelected={isBookmarkSelected(node.id)}
+              highlightedBookmarkId={highlightedBookmarkId}
               checkIsLoaded={isBookmarkLoaded}
               checkIsAudible={isBookmarkAudible}
               checkIsActive={isBookmarkActive}

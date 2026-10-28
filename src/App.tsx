@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import { BookmarkTree, OpenFirstVisibleBookmark } from './components/BookmarkTree';
+import { BookmarkTree, OpenFirstVisibleBookmark, MoveBookmarkHighlight } from './components/BookmarkTree';
 import { TabList, ExternalDropTarget, ResolveBookmarkDropTarget } from './components/TabList';
 import { PinnedBar } from './components/PinnedBar';
 import { Toolbar } from './components/Toolbar';
@@ -68,6 +68,7 @@ interface SidebarContentProps
   arcSingleClickOpensTab: boolean;
   onResolverReady: (fn: ResolveBookmarkDropTarget) => void;
   onOpenFirstVisibleReady: (fn: OpenFirstVisibleBookmark) => void;
+  onMoveHighlightReady: (fn: MoveBookmarkHighlight) => void;
   keepBookmarkNames: boolean;
   prefixTags: boolean;
   filterLiveTabs: boolean;
@@ -99,6 +100,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   arcSingleClickOpensTab,
   onResolverReady,
   onOpenFirstVisibleReady,
+  onMoveHighlightReady,
   keepBookmarkNames,
   prefixTags,
   filterLiveTabs,
@@ -204,6 +206,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={onResolverReady}
         onOpenFirstVisibleReady={onOpenFirstVisibleReady}
+        onMoveHighlightReady={onMoveHighlightReady}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         filterLiveTabs={filterLiveTabs}
@@ -761,6 +764,8 @@ function App() {
   const bookmarkDropResolverRef = useRef<ResolveBookmarkDropTarget | null>(null);
   // Set by the mounted BookmarkTree: opens its first visible bookmark (Enter in search box)
   const openFirstVisibleBookmarkRef = useRef<OpenFirstVisibleBookmark | null>(null);
+  // Set by the mounted BookmarkTree: moves the Enter target highlight (arrow keys in search box)
+  const moveBookmarkHighlightRef = useRef<MoveBookmarkHighlight | null>(null);
   const newsHoverTimerRef = useRef<number | null>(null);
   // Clean up hover timer on unmount
   useEffect(() =>
@@ -820,6 +825,12 @@ function App() {
   const handleSubmitFilter = (text: string): boolean =>
   {
     return openFirstVisibleBookmarkRef.current?.(text) ?? false;
+  };
+
+  // Arrow keys in search box: move the highlighted bookmark row that Enter will open
+  const handleMoveHighlight = (delta: 1 | -1): boolean =>
+  {
+    return moveBookmarkHighlightRef.current?.(delta) ?? false;
   };
 
   const handleSaveFilter = (text: string) => {
@@ -1113,6 +1124,7 @@ function App() {
           filterText={filterText}
           onFilterTextChange={handleFilterTextChange}
           onSubmitFilter={handleSubmitFilter}
+          onMoveHighlight={handleMoveHighlight}
           savedFilters={savedFilters}
           recentFilters={recentFilters}
           onSaveFilter={handleSaveFilter}
@@ -1302,6 +1314,7 @@ function App() {
         arcSingleClickOpensTab={arcSingleClickOpensTab}
         onResolverReady={(fn) => { bookmarkDropResolverRef.current = fn; }}
         onOpenFirstVisibleReady={(fn) => { openFirstVisibleBookmarkRef.current = fn; }}
+        onMoveHighlightReady={(fn) => { moveBookmarkHighlightRef.current = fn; }}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         filterLiveTabs={showFilterArea && filterLiveTabs}
