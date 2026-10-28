@@ -69,6 +69,7 @@ interface SidebarContentProps
   onResolverReady: (fn: ResolveBookmarkDropTarget) => void;
   onOpenFirstVisibleReady: (fn: OpenFirstVisibleBookmark) => void;
   keepBookmarkNames: boolean;
+  prefixTags: boolean;
   filterLiveTabs: boolean;
   filterText: string;
   tabGroupDisplayOrder: TabGroupDisplayOrder;
@@ -99,6 +100,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   onResolverReady,
   onOpenFirstVisibleReady,
   keepBookmarkNames,
+  prefixTags,
   filterLiveTabs,
   filterText,
   tabGroupDisplayOrder,
@@ -203,6 +205,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         onResolverReady={onResolverReady}
         onOpenFirstVisibleReady={onOpenFirstVisibleReady}
         keepBookmarkNames={keepBookmarkNames}
+        prefixTags={prefixTags}
         filterLiveTabs={filterLiveTabs}
         filterText={filterText}
         activeSpace={activeSpace}
@@ -564,6 +567,12 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
+  // Show the "prefix · " part of bookmark names as a colored tag
+  const [prefixTags, setPrefixTags] = useChromeLocalStorage(
+    'sidebar-prefix-tags',
+    false,
+    { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+  );
   const [tabGroupDisplayOrder, setTabGroupDisplayOrder] = useLocalStorage<TabGroupDisplayOrder>(
     'sidebar-tab-group-display-order',
     'groupsFirst',
@@ -789,6 +798,7 @@ function App() {
     setFlattenBookmarksBar(newSettings.flattenBookmarksBar);
     setFocusSearchOnOpen(newSettings.focusSearchOnOpen);
     setKeepBookmarkNames(newSettings.keepBookmarkNames);
+    setPrefixTags(newSettings.prefixTags);
     setTabGroupDisplayOrder(newSettings.tabGroupDisplayOrder);
     setPinnedIconSize(newSettings.pinnedIconSize);
     setBookmarkOpenMode(newSettings.bookmarkOpenMode);
@@ -1016,6 +1026,7 @@ function App() {
           flattenBookmarksBar,
           focusSearchOnOpen,
           keepBookmarkNames,
+          prefixTags,
           tabGroupDisplayOrder,
           pinnedIconSize,
           bookmarkOpenMode,
@@ -1292,6 +1303,7 @@ function App() {
         onResolverReady={(fn) => { bookmarkDropResolverRef.current = fn; }}
         onOpenFirstVisibleReady={(fn) => { openFirstVisibleBookmarkRef.current = fn; }}
         keepBookmarkNames={keepBookmarkNames}
+        prefixTags={prefixTags}
         filterLiveTabs={showFilterArea && filterLiveTabs}
         filterText={filterText}
         tabGroupDisplayOrder={tabGroupDisplayOrder}

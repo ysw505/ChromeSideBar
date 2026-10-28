@@ -21,6 +21,7 @@ import * as ContextMenu from './menu/ContextMenu';
 import { TreeRow } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
+import { splitTitlePrefix, prefixColorPalette } from '../utils/titlePrefix';
 import {
   Globe,
   Trash,
@@ -180,6 +181,7 @@ interface BookmarkRowProps {
   isActive?: boolean;
   liveTitle?: string;
   keepBookmarkNames?: boolean;  // always show node.title, never the live tab title
+  prefixTags?: boolean;  // render "prefix · rest" names with prefix as a colored tag
   isSelected?: boolean;
   checkIsLoaded?: (bookmarkId: string) => boolean;
   checkIsAudible?: (bookmarkId: string) => boolean;
@@ -249,6 +251,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   isActive,
   liveTitle,
   keepBookmarkNames = false,
+  prefixTags = false,
   isSelected,
   onOpenBookmark,
   onCloseBookmark,
@@ -435,6 +438,22 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   const showLiveTitle = !keepBookmarkNames && bookmarkOpenMode === 'arc' && isLoaded && !!liveTitle;
   const displayTitle = showLiveTitle ? liveTitle! : node.title;
 
+  // Bookmark rows only (not folders): show a "prefix · " part of the label as a colored tag
+  const titlePrefix = prefixTags && !isFolder ? splitTitlePrefix(displayTitle) : undefined;
+  const titleLabel = titlePrefix ? (
+    <>
+      <span
+        className={clsx(
+          'inline-block align-middle mr-1 px-1 rounded text-[10px] leading-4 font-medium whitespace-nowrap',
+          prefixColorPalette.classesFor(titlePrefix.prefix)
+        )}
+      >
+        {titlePrefix.prefix}
+      </span>
+      {titlePrefix.rest}
+    </>
+  ) : displayTitle;
+
   // Speaker indicator - at absolute left edge (Arc-style only)
   const leadingIndicator = !isFolder && bookmarkOpenMode === 'arc' && isAudible
     ? <Volume2 size={SPEAKER_ICON_SIZE} />
@@ -448,7 +467,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
             <TreeRow
               ref={ref}
               depth={depth}
-              title={displayTitle}
+              title={titleLabel}
               tooltip={node.url ? `${node.title}\n${node.url}` : undefined}
               icon={combinedIcon}
               hasChildren={isFolder}
@@ -816,6 +835,7 @@ interface BookmarkTreeProps {
   // Receives a function that opens the first visible bookmark for a search text (Enter in search box)
   onOpenFirstVisibleReady?: (openFirstVisible: OpenFirstVisibleBookmark) => void;
   keepBookmarkNames?: boolean;
+  prefixTags?: boolean;
   filterLiveTabs?: boolean;
   filterText?: string;
   activeSpace?: Space | null;
@@ -824,7 +844,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, keepBookmarkNames = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, keepBookmarkNames = false, prefixTags = false, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -2235,6 +2255,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               isActive={isBookmarkActive(node.id)}
               liveTitle={getBookmarkLiveTitle(node.id)}
               keepBookmarkNames={keepBookmarkNames}
+              prefixTags={prefixTags}
               isSelected={isBookmarkSelected(node.id)}
               checkIsLoaded={isBookmarkLoaded}
               checkIsAudible={isBookmarkAudible}

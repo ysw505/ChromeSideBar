@@ -20,6 +20,7 @@ export interface SettingsValues {
   followActiveTab: FollowActiveTabMode;
   focusSearchOnOpen: boolean;  // show + focus the search box each time the side panel opens
   keepBookmarkNames: boolean;  // keep the bookmark's own name even while its tab is open (no live page title)
+  prefixTags: boolean;  // show the "prefix · " part of a bookmark name as a colored tag
 }
 
 interface SettingsDialogProps {
@@ -52,6 +53,7 @@ export function SettingsDialog({
   const [tempFollowActiveTab, setTempFollowActiveTab] = useState(settings.followActiveTab);
   const [tempFocusSearchOnOpen, setTempFocusSearchOnOpen] = useState(settings.focusSearchOnOpen);
   const [tempKeepBookmarkNames, setTempKeepBookmarkNames] = useState(settings.keepBookmarkNames);
+  const [tempPrefixTags, setTempPrefixTags] = useState(settings.prefixTags);
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
 
   // Track previous isOpen to detect when dialog opens
@@ -83,6 +85,7 @@ export function SettingsDialog({
       setTempFollowActiveTab(settings.followActiveTab);
       setTempFocusSearchOnOpen(settings.focusSearchOnOpen);
       setTempKeepBookmarkNames(settings.keepBookmarkNames);
+      setTempPrefixTags(settings.prefixTags);
       setActiveTab('appearance');
     }
     wasOpen.current = isOpen;
@@ -104,6 +107,7 @@ export function SettingsDialog({
       followActiveTab: tempFollowActiveTab,
       focusSearchOnOpen: tempFocusSearchOnOpen,
       keepBookmarkNames: tempKeepBookmarkNames,
+      prefixTags: tempPrefixTags,
     });
   };
 
@@ -232,6 +236,22 @@ export function SettingsDialog({
               </label>
               <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
                 Don't swap in the page title while the bookmark's tab is open.
+              </p>
+            </div>
+
+            {/* Show the "prefix · " part of bookmark names as a colored tag */}
+            <div>
+              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tempPrefixTags}
+                  onChange={(e) => setTempPrefixTags(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Show "prefix · " in bookmark names as a colored tag
+              </label>
+              <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
+                A name like "pub · argocd" shows pub as a small colored tag.
               </p>
             </div>
 
