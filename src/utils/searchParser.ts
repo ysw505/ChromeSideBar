@@ -12,7 +12,7 @@ const HASHTAG_TERM = /^#[^\s#]+$/;
 const HAS_LETTER = /\p{L}/u;
 
 // The tag a term asks for ("#fin" -> "fin"), or undefined when the term is ordinary text
-function hashtagOfTerm(term: string): string | undefined
+export function hashtagOfTerm(term: string): string | undefined
 {
   if (!HASHTAG_TERM.test(term))
   {

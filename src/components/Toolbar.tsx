@@ -1,5 +1,10 @@
 import { Settings, Volume2, ChevronDown, X, Save, Clock, Bookmark, Trash2, RotateCcwSquare, RotateCwSquare, HelpCircle, Search } from 'lucide-react';
-import React, { forwardRef, useState, useRef, useEffect, useCallback } from 'react';
+import React, { forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import clsx from 'clsx';
+import { SearchTagOverlay } from './SearchTagOverlay';
+import { useKnownTags } from '../hooks/useKnownTags';
+import { hashtagOfTerm } from '../utils/searchParser';
+import { prefixColorPalette } from '../utils/titlePrefix';
 import * as DropdownMenu from './menu/DropdownMenu';
 import { useShowActiveTab } from '../hooks/useFollowActiveTab';
 import { useSpacesContext } from '../contexts/SpacesContext';
@@ -61,6 +66,136 @@ const TreeGutterIcon = ({ size = 16 }: { size?: number }) => (
 );
 
 const DEBOUNCE_MS = 300;
+
+// Characters that end a search word: whitespace and the search parser's punctuation
+const TOKEN_BOUNDARY = /[\s()!"']/;
+// A tag must contain a letter (same rule as the parser), so "123" never offers a tag
+const HAS_LETTER = /\p{L}/u;
+
+// The word of the search text that the caret is in or touching, with its position
+class CaretToken
+{
+  private constructor(readonly start: number, readonly end: number, readonly text: string)
+  {
+  }
+
+  // The word around the caret, or undefined when the caret sits between boundaries
+  static at(value: string, caret: number | null): CaretToken | undefined
+  {
+    if (caret === null || caret < 0 || caret > value.length)
+    {
+      return undefined;
+    }
+    let start = caret;
+    // Walk left to the previous boundary
+    while (start > 0 && !TOKEN_BOUNDARY.test(value[start - 1]))
+    {
+      start--;
+    }
+    let end = caret;
+    // Walk right to the next boundary
+    while (end < value.length && !TOKEN_BOUNDARY.test(value[end]))
+    {
+      end++;
+    }
+    return start < end ? new CaretToken(start, end, value.slice(start, end)) : undefined;
+  }
+
+  // Plain word (not already "#tag") that could name a tag
+  get couldBeTag(): boolean
+  {
+    return !this.text.startsWith('#') && HAS_LETTER.test(this.text);
+  }
+
+  // Identity of this word at this position, used to remember an Escape dismissal
+  get id(): string
+  {
+    return `${this.start}:${this.text}`;
+  }
+
+  // The search text with this word replaced by "#spelling"; a trailing space is added
+  // when the word ends the text so the next term can be typed right away
+  replaceWithTag(value: string, spelling: string): { value: string; caret: number }
+  {
+    const after = value.slice(this.end);
+    const inserted = `#${spelling}${after.length === 0 ? ' ' : ''}`;
+    return {
+      value: value.slice(0, this.start) + inserted + after,
+      caret: this.start + inserted.length,
+    };
+  }
+}
+
+// A whole "#tag" term next to the caret, which Backspace/Delete remove in one keystroke
+class PillToken
+{
+  private constructor(readonly start: number, readonly end: number)
+  {
+  }
+
+  // True when position i is the edge of a search word (text edge or a boundary character)
+  private static isEdge(value: string, i: number): boolean
+  {
+    return i <= 0 || i >= value.length || TOKEN_BOUNDARY.test(value[i]);
+  }
+
+  // The pill whose last character is right before the caret ("#fin|"), if any
+  static endingAt(value: string, caret: number): PillToken | undefined
+  {
+    // A caret inside a word ("#f|in") keeps normal character editing
+    if (caret < value.length && !TOKEN_BOUNDARY.test(value[caret]))
+    {
+      return undefined;
+    }
+    let nameStart = caret;
+    // Walk left over the tag name to its "#"
+    while (nameStart > 0 && value[nameStart - 1] !== '#' && !TOKEN_BOUNDARY.test(value[nameStart - 1]))
+    {
+      nameStart--;
+    }
+    const start = nameStart - 1;
+    // Need a "#" that itself starts a word, followed by a non-empty name
+    if (start < 0 || value[start] !== '#' || nameStart === caret || !PillToken.isEdge(value, start - 1))
+    {
+      return undefined;
+    }
+    return PillToken.ifTag(value, start, caret);
+  }
+
+  // The pill that starts right at the caret ("|#fin"), if any
+  static startingAt(value: string, caret: number): PillToken | undefined
+  {
+    // Need a "#" at the caret that starts a word
+    if (value[caret] !== '#' || !PillToken.isEdge(value, caret - 1))
+    {
+      return undefined;
+    }
+    let end = caret + 1;
+    // Walk right over the tag name
+    while (end < value.length && value[end] !== '#' && !TOKEN_BOUNDARY.test(value[end]))
+    {
+      end++;
+    }
+    // The name must end at a word boundary, not run into another "#"
+    if (end < value.length && !TOKEN_BOUNDARY.test(value[end]))
+    {
+      return undefined;
+    }
+    return PillToken.ifTag(value, caret, end);
+  }
+
+  // A pill for [start, end) only when the parser treats that term as a tag
+  private static ifTag(value: string, start: number, end: number): PillToken | undefined
+  {
+    return hashtagOfTerm(value.slice(start, end)) !== undefined ? new PillToken(start, end) : undefined;
+  }
+
+  // The search text without this pill, with the caret where the pill began
+  removeFrom(value: string): { value: string; caret: number }
+  {
+    return { value: value.slice(0, this.start) + value.slice(this.end), caret: this.start };
+  }
+}
 
 export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   filterLiveTabsActive,
@@ -261,6 +396,18 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Inner element of the "#tag" pill overlay; translated to follow the input's horizontal scroll
+  const tagOverlayScrollRef = useRef<HTMLDivElement>(null);
+  const syncTagOverlayScroll = useCallback(() =>
+  {
+    const input = inputRef.current;
+    const overlay = tagOverlayScrollRef.current;
+    if (input && overlay)
+    {
+      overlay.style.transform = `translateX(${-input.scrollLeft}px)`;
+    }
+  }, []);
+
   // Syntax help popover state
   const [showSyntaxHelp, setShowSyntaxHelp] = useState(false);
   const syntaxHelpRef = useRef<HTMLDivElement>(null);
@@ -272,6 +419,47 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
 
   // Track current session's recent entry (for updating instead of adding new)
   const [sessionRecentEntry, setSessionRecentEntry] = useState<string | null>(null);
+
+  // Tag hint: when the word at the caret equals an existing tag, offer to turn it into "#tag"
+  const knownTags = useKnownTags();
+  const [caretPos, setCaretPos] = useState<number | null>(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  // Word dismissed with Escape; its hint stays hidden until the word changes
+  const [dismissedTokenId, setDismissedTokenId] = useState<string | null>(null);
+  // Caret position to restore after a tag conversion re-renders the input
+  const pendingCaretRef = useRef<number | null>(null);
+
+  const caretToken = CaretToken.at(inputValue, caretPos);
+  const tagHintSpelling = caretToken?.couldBeTag ? knownTags.spellingFor(caretToken.text) : undefined;
+  const tagHint = inputFocused && caretToken && tagHintSpelling !== undefined && caretToken.id !== dismissedTokenId
+    ? { token: caretToken, spelling: tagHintSpelling }
+    : undefined;
+
+  // Read the caret from the input after typing, clicking or moving the selection
+  const updateCaretPos = useCallback(() =>
+  {
+    setCaretPos(inputRef.current?.selectionStart ?? null);
+  }, []);
+
+  // Place the caret after a tag conversion, once the new text is in the input
+  useLayoutEffect(() =>
+  {
+    const caret = pendingCaretRef.current;
+    const input = inputRef.current;
+    if (caret !== null && input)
+    {
+      pendingCaretRef.current = null;
+      input.focus();
+      input.setSelectionRange(caret, caret);
+      setCaretPos(caret);
+    }
+  }, [inputValue]);
+
+  // Typing at the end can scroll the input without a scroll event, so resync after each value change
+  useLayoutEffect(() =>
+  {
+    syncTagOverlayScroll();
+  }, [inputValue, syncTagOverlayScroll]);
 
   // Sync inputValue when filterText changes externally (e.g., from selecting a filter)
   useEffect(() =>
@@ -504,9 +692,73 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     }
   }, [inputValue, onSubmitFilter, onFilterTextChange]);
 
+  // Turn the hinted word into "#tag" and refilter, keeping the caret right after the tag
+  const convertHintToTag = useCallback(() =>
+  {
+    if (!tagHint)
+    {
+      return;
+    }
+    const next = tagHint.token.replaceWithTag(inputValue, tagHint.spelling);
+    pendingCaretRef.current = next.caret;
+    handleInputChange(next.value);
+  }, [tagHint, inputValue, handleInputChange]);
+
+  // The tag hint and the recent-searches list share the spot under the input; the hint wins
+  const hasTagHint = tagHint !== undefined;
+  useEffect(() =>
+  {
+    if (hasTagHint)
+    {
+      setShowDropdown(false);
+    }
+  }, [hasTagHint]);
+
   // Handle input keydown: arrows move the Enter target (with text) or open the dropdown (empty), Enter commits
   const handleInputKeydown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) =>
   {
+    // Enter that confirms an IME composition (e.g. Korean) is not a submit
+    if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229))
+    {
+      return;
+    }
+
+    // Backspace/Delete next to a "#tag" pill remove the whole pill (plain caret, no modifiers, not composing)
+    const isPillKey = e.key === 'Backspace' || e.key === 'Delete';
+    const input = e.currentTarget;
+    if (isPillKey && !e.nativeEvent.isComposing && e.keyCode !== 229
+      && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey
+      && input.selectionStart !== null && input.selectionStart === input.selectionEnd)
+    {
+      const pill = e.key === 'Backspace'
+        ? PillToken.endingAt(inputValue, input.selectionStart)
+        : PillToken.startingAt(inputValue, input.selectionStart);
+      if (pill)
+      {
+        e.preventDefault();
+        const next = pill.removeFrom(inputValue);
+        pendingCaretRef.current = next.caret;
+        handleInputChange(next.value);
+        return;
+      }
+    }
+
+    // Tag hint showing: Enter converts the word to "#tag", Escape hides the hint for this word
+    if (tagHint && (e.key === 'Enter' || e.key === 'Escape'))
+    {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Enter')
+      {
+        convertHintToTag();
+      }
+      else
+      {
+        setDismissedTokenId(tagHint.token.id);
+      }
+      return;
+    }
+
     const isArrow = e.key === 'ArrowDown' || e.key === 'ArrowUp';
     // With search text, arrows pick which bookmark row Enter opens; focus stays in the input
     if (isArrow && inputValue.trim() && onMoveHighlight)
@@ -527,11 +779,12 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
       commitToRecent();
       submitFilter();
     }
-  }, [commitToRecent, submitFilter, inputValue, onMoveHighlight]);
+  }, [commitToRecent, submitFilter, inputValue, onMoveHighlight, tagHint, convertHintToTag, handleInputChange]);
 
   // Handle input blur to commit to recent
   const handleInputBlur = useCallback(() =>
   {
+    setInputFocused(false);
     commitToRecent();
   }, [commitToRecent]);
 
@@ -725,15 +978,30 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
         <>
         <div className="flex items-center gap-1 px-2 pb-1.5">
           <div className="relative flex-1 flex items-center">
+            {/* Visible copy of the input text with "#tag" pills; sits under the (relative, transparent) input so caret and selection draw on top */}
+            <SearchTagOverlay ref={tagOverlayScrollRef} value={inputValue} />
             <input
               ref={inputRef}
               type="text"
               value={inputValue}
-              onChange={(e) => handleInputChange(e.target.value)}
+              onChange={(e) =>
+              {
+                setCaretPos(e.target.selectionStart);
+                handleInputChange(e.target.value);
+              }}
               onKeyDown={handleInputKeydown}
+              onKeyUp={updateCaretPos}
+              onClick={updateCaretPos}
+              onSelect={updateCaretPos}
+              onFocus={() =>
+              {
+                setInputFocused(true);
+                updateCaretPos();
+              }}
               onBlur={handleInputBlur}
+              onScroll={syncTagOverlayScroll}
               placeholder="Filter by title or URL..."
-              className="w-full pl-2 pr-16 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="relative w-full pl-2 pr-16 py-1 border border-gray-300 dark:border-gray-600 rounded bg-transparent text-transparent caret-gray-900 dark:caret-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
 
             {/* Clear button - inside input on right */}
@@ -757,8 +1025,30 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
               <ChevronDown size={16} />
             </button>
 
-            {/* Dropdown menu */}
-            {showDropdown && (
+            {/* Tag hint: the word at the caret is an existing tag; Enter or click turns it into "#tag" */}
+            {tagHint && (
+              <div
+                className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50"
+              >
+                <div
+                  // mousedown + preventDefault keeps focus in the input (no blur, no recent-commit)
+                  onMouseDown={(e) =>
+                  {
+                    e.preventDefault();
+                    convertHintToTag();
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                >
+                  <span className={clsx('rounded px-1 text-xs', prefixColorPalette.classesFor(tagHint.spelling))}>
+                    {tagHint.spelling}
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Enter: filter by tag</span>
+                </div>
+              </div>
+            )}
+
+            {/* Dropdown menu (never together with the tag hint) */}
+            {showDropdown && !tagHint && (
               <div
                 ref={dropdownRef}
                 className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-50 max-h-64 overflow-y-auto"
