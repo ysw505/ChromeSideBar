@@ -42,6 +42,7 @@ import { useNewsCheck } from './hooks/useNewsCheck';
 import { lastAudibleTrackerProxy } from './managers/proxies/lastAudibleTrackerProxy';
 import { useFollowActiveTab } from './hooks/useFollowActiveTab';
 import { FollowActiveTabMode, FOLLOW_ACTIVE_TAB_KEY, DEFAULT_FOLLOW_ACTIVE_TAB_MODE, parseFollowActiveTabMode } from './utils/followActiveTab';
+import { TYPED_URL_NEW_TAB_KEY } from './utils/typedNavigation';
 import * as DropdownMenu from './components/menu/DropdownMenu';
 
 // DEV-only, code-split so it never ends up in a production bundle - see
@@ -574,6 +575,12 @@ function App() {
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
   );
+  // Address-bar navigation to another site from a bookmark's tab opens in a new tab (acted on by background.ts)
+  const [typedUrlNewTab, setTypedUrlNewTab] = useChromeLocalStorage(
+    TYPED_URL_NEW_TAB_KEY,
+    false,
+    { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+  );
   // Show the #tags (or legacy "tag · ") of bookmark names as colored chips
   const [prefixTags, setPrefixTags] = useChromeLocalStorage(
     'sidebar-prefix-tags',
@@ -807,6 +814,7 @@ function App() {
     setFlattenBookmarksBar(newSettings.flattenBookmarksBar);
     setFocusSearchOnOpen(newSettings.focusSearchOnOpen);
     setKeepBookmarkNames(newSettings.keepBookmarkNames);
+    setTypedUrlNewTab(newSettings.typedUrlNewTab);
     setPrefixTags(newSettings.prefixTags);
     setTabGroupDisplayOrder(newSettings.tabGroupDisplayOrder);
     setPinnedIconSize(newSettings.pinnedIconSize);
@@ -1063,6 +1071,7 @@ function App() {
           flattenBookmarksBar,
           focusSearchOnOpen,
           keepBookmarkNames,
+          typedUrlNewTab,
           prefixTags,
           tabGroupDisplayOrder,
           pinnedIconSize,

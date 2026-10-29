@@ -144,6 +144,16 @@ Array<{
 - Consumers: `src/background.ts` (space switching), `src/hooks/useFollowActiveTab.ts` (scrolling), `src/components/SettingsDialog.tsx`
 - Instances: 1 per extension (shared across windows)
 
+### `sidebar-typed-url-new-tab`
+"Typed addresses open in a new tab": when a bookmark/pinned site's tab is sent to another origin from the address bar, open that URL in a new tab and send the associated tab back
+```typescript
+'true' | 'false'  // default 'false'
+```
+- Owner: `src/App.tsx` (via `useChromeLocalStorage`)
+- Consumers: `src/background.ts` (`chrome.webNavigation` listeners, read on each commit), `src/components/SettingsDialog.tsx`
+- Logic: `src/utils/typedNavigation.ts`
+- Instances: 1 per extension (shared across windows)
+
 ### `pinnedSites`
 Pinned sites list
 ```typescript

@@ -20,6 +20,7 @@ export interface SettingsValues {
   followActiveTab: FollowActiveTabMode;
   focusSearchOnOpen: boolean;  // show + focus the search box each time the side panel opens
   keepBookmarkNames: boolean;  // keep the bookmark's own name even while its tab is open (no live page title)
+  typedUrlNewTab: boolean;  // an associated tab sent to another site from the address bar opens that site in a new tab
   prefixTags: boolean;  // show the #tags (or legacy "tag · ") of a bookmark name as colored chips
 }
 
@@ -53,6 +54,7 @@ export function SettingsDialog({
   const [tempFollowActiveTab, setTempFollowActiveTab] = useState(settings.followActiveTab);
   const [tempFocusSearchOnOpen, setTempFocusSearchOnOpen] = useState(settings.focusSearchOnOpen);
   const [tempKeepBookmarkNames, setTempKeepBookmarkNames] = useState(settings.keepBookmarkNames);
+  const [tempTypedUrlNewTab, setTempTypedUrlNewTab] = useState(settings.typedUrlNewTab);
   const [tempPrefixTags, setTempPrefixTags] = useState(settings.prefixTags);
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
 
@@ -85,6 +87,7 @@ export function SettingsDialog({
       setTempFollowActiveTab(settings.followActiveTab);
       setTempFocusSearchOnOpen(settings.focusSearchOnOpen);
       setTempKeepBookmarkNames(settings.keepBookmarkNames);
+      setTempTypedUrlNewTab(settings.typedUrlNewTab);
       setTempPrefixTags(settings.prefixTags);
       setActiveTab('appearance');
     }
@@ -107,6 +110,7 @@ export function SettingsDialog({
       followActiveTab: tempFollowActiveTab,
       focusSearchOnOpen: tempFocusSearchOnOpen,
       keepBookmarkNames: tempKeepBookmarkNames,
+      typedUrlNewTab: tempTypedUrlNewTab,
       prefixTags: tempPrefixTags,
     });
   };
@@ -236,6 +240,22 @@ export function SettingsDialog({
               </label>
               <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
                 Don't swap in the page title while the bookmark's tab is open.
+              </p>
+            </div>
+
+            {/* Move address-bar navigation to another site out of the bookmark's tab */}
+            <div>
+              <label className="flex items-center gap-2 text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tempTypedUrlNewTab}
+                  onChange={(e) => setTempTypedUrlNewTab(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                Typed addresses open in a new tab
+              </label>
+              <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
+                When a bookmark's tab is sent to another site from the address bar, that site opens in a new tab and the bookmark's tab goes back to its page. The page reloads, so it flashes briefly. Links inside the page and same-site addresses are not affected.
               </p>
             </div>
 

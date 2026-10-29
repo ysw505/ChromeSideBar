@@ -176,6 +176,7 @@ Gear icon in the bottom-left corner:
 - `sidePanel`, `bookmarks`, `tabs`, `tabGroups`: Core features
 - `storage`: Save your settings locally
 - `favicon`: Show website icons
+- `webNavigation`: Detect addresses typed into a bookmark's tab (only used when "Typed addresses open in a new tab" is on)
 
 ## Full Changelog
 
@@ -190,7 +191,7 @@ Built with the usual modern web stack:
 - [Tailwind CSS](https://tailwindcss.com/) for styling
 - [Lucide React](https://lucide.dev/) for icons
 - [@dnd-kit/core](https://dndkit.com/) for drag & drop
-- Chrome Manifest V3 APIs (`sidePanel`, `bookmarks`, `tabs`, `tabGroups`, `storage`, `favicon`)
+- Chrome Manifest V3 APIs (`sidePanel`, `bookmarks`, `tabs`, `tabGroups`, `storage`, `favicon`, `webNavigation`)
 
 ## Project Structure
 

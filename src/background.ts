@@ -1,6 +1,7 @@
 import { SpaceMessageAction, Space, ALL_SPACE } from './utils/spaceMessages';
 import { USE_SPACES_KEY, isSpacesEnabled, nextSpaceId } from './utils/spaceCycle';
 import { FOLLOW_ACTIVE_TAB_KEY, parseFollowActiveTabMode } from './utils/followActiveTab';
+import { TYPED_URL_NEW_TAB_KEY, parseTypedUrlNewTab, isAddressBarNavigation, leavesItemOrigin, RequestedUrlTracker } from './utils/typedNavigation';
 import { isPinnedManagedTab, getTabAssociations, saveTabAssociationBackup, removeTabAssociationBackup, updateTabAssociationBackupIndices, removeWindowAssociationBackup, restoreTabAssociationBackup } from './utils/tabAssociations';
 import { toChromeColor } from './utils/groupColors';
 import { fetchFaviconAsBase64, getFaviconUrl } from './utils/favicon';
@@ -314,6 +315,8 @@ const historyManager = new TabHistoryManager({
 });
 const groupTracker = new TabGroupTracker();
 const pinnedSitesManager = new PinnedSitesManager();
+// URL each tab asked for before server redirects (for "Typed addresses open in a new tab")
+const requestedUrlTracker = new RequestedUrlTracker();
 // Reads the history manager's activation order, so it has to come after it.
 const lastAudibleTracker = new LastAudibleTracker(historyManager);
 tabSpaceRegistry = new TabSpaceRegistry();
@@ -455,6 +458,7 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) =>
   historyManager.remove(removeInfo.windowId, tabId);
   lastAudibleTracker.clearIfMatches(tabId);
   tabSpaceRegistry.unregister(removeInfo.windowId, tabId);
+  requestedUrlTracker.forget(tabId);
 
   if (!removeInfo.isWindowClosing)
   {
@@ -467,6 +471,112 @@ chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) =>
 
     // Any tab removal shifts indices of tabs after it
     await refreshBackupIndices(removeInfo.windowId);
+  }
+});
+
+// =============================================================================
+// Typed addresses open in a new tab
+// =============================================================================
+
+// Look up the bookmark's / pinned site's own URL from its association key
+async function getAssociatedItemUrl(itemKey: string): Promise<string | undefined>
+{
+  // Bookmark: ask the bookmarks API
+  if (itemKey.startsWith('bookmark-'))
+  {
+    const bookmarkId = itemKey.slice('bookmark-'.length);
+    const [bookmark] = await chrome.bookmarks.get(bookmarkId);
+    return bookmark?.url;
+  }
+
+  // Pinned site: look it up in the in-memory pinned list
+  if (itemKey.startsWith('pinned-'))
+  {
+    const pinnedId = itemKey.slice('pinned-'.length);
+    return pinnedSitesManager.getPinnedSites().find(site => site.id === pinnedId)?.url;
+  }
+
+  return undefined;
+}
+
+// Remember the URL the user asked for (before any server redirect), top frame only
+chrome.webNavigation.onBeforeNavigate.addListener((details) =>
+{
+  if (details.frameId !== 0) return;
+  requestedUrlTracker.remember(details.tabId, details.url);
+});
+
+// When an associated tab is sent to another site from the address bar, open
+// that site in a new tab next to it and send the associated tab back.
+// Chrome cannot cancel a navigation, so this acts after the commit.
+chrome.webNavigation.onCommitted.addListener(async (details) =>
+{
+  if (details.frameId !== 0) return;
+  const requestedUrl = requestedUrlTracker.take(details.tabId) ?? details.url;
+
+  // Only address-bar navigations; skips back/forward (our own goBack), links, reloads, redirects
+  if (!isAddressBarNavigation(details.transitionType, details.transitionQualifiers))
+  {
+    return;
+  }
+
+  // Setting is off by default
+  const settingResult = await chrome.storage.local.get([TYPED_URL_NEW_TAB_KEY]);
+  if (!parseTypedUrlNewTab(settingResult[TYPED_URL_NEW_TAB_KEY]))
+  {
+    return;
+  }
+
+  try
+  {
+    await stateReady;
+    const tab = await chrome.tabs.get(details.tabId);
+    const associations = await getTabAssociations(tab.windowId);
+    const itemKey = associations[details.tabId];
+
+    // Only tabs that belong to a bookmark or pinned site
+    if (!itemKey)
+    {
+      return;
+    }
+
+    // Same-origin movement stays in the tab; missing item URL means do nothing
+    const itemUrl = await getAssociatedItemUrl(itemKey);
+    if (!itemUrl || !leavesItemOrigin(requestedUrl, itemUrl))
+    {
+      return;
+    }
+
+    await chrome.tabs.create({
+      url: requestedUrl,
+      active: true,
+      windowId: tab.windowId,
+      index: tab.index + 1,
+      openerTabId: details.tabId,
+    });
+
+    // Send the associated tab back; with no history entry, load the item URL instead
+    try
+    {
+      await chrome.tabs.goBack(details.tabId);
+    }
+    catch
+    {
+      await chrome.tabs.update(details.tabId, { url: itemUrl });
+    }
+
+    if (import.meta.env.DEV)
+    {
+      console.log(`[typedUrlNewTab] tab=${details.tabId} (${itemKey}) -> new tab ${requestedUrl}`);
+    }
+  }
+  catch (error)
+  {
+    // Tab may have closed meanwhile
+    if (import.meta.env.DEV)
+    {
+      console.log('[typedUrlNewTab] skipped:', error);
+    }
   }
 });
 
