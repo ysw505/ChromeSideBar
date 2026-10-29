@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Globe, Pencil, Trash, X, RotateCcw, Play, Copy, ExternalLink, Link, ArrowRightFromLine } from 'lucide-react';
 import { Dialog } from './Dialog';
 import { PinnedSite, getFaviconUrl, fetchFaviconAsBase64 } from '../hooks/usePinnedSites';
@@ -8,6 +8,26 @@ import * as ContextMenu from './menu/ContextMenu';
 import { IconColorPicker, PINNED_SITE_COLORS, DEFAULT_ICON_COLOR } from './IconColorPicker';
 import { iconToDataUrl } from '../utils/iconify';
 import { createPinDragData, DropData, DropPosition, DragFormat, acceptsFormats } from '../types/dragDrop';
+import { InstantTooltip } from './InstantTooltip';
+
+/**
+ * Text shown in the hover tooltip: the saved pin name, or the URL host when the name is empty.
+ */
+const getTooltipText = (site: PinnedSite): string =>
+{
+  if (site.title.trim())
+  {
+    return site.title;
+  }
+  try
+  {
+    return new URL(site.url).host || site.url;
+  }
+  catch
+  {
+    return site.url;
+  }
+};
 
 /**
  * Shared visual component for pinned icon rendering.
@@ -104,6 +124,18 @@ export const PinnedIcon = ({
   const [editEmoji, setEditEmoji] = useState(site.emoji);
   const [customHexInput, setCustomHexInput] = useState('');
   const iconRef = useRef<HTMLDivElement>(null);
+  // Anchor rect of the icon while the instant tooltip is visible; null = hidden
+  const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
+
+  const showTooltip = (e: React.SyntheticEvent<HTMLDivElement>) =>
+  {
+    setTooltipRect(e.currentTarget.getBoundingClientRect());
+  };
+
+  const hideTooltip = () =>
+  {
+    setTooltipRect(null);
+  };
 
   const pinId = `pin-${site.id}`;
 
@@ -117,6 +149,15 @@ export const PinnedIcon = ({
     id: pinId,
     data: createPinDragData(site.id, site.url, site.title, site.favicon),
   });
+
+  // Drop the tooltip anchor once a drag starts so it cannot reappear at the old spot after drop
+  useEffect(() =>
+  {
+    if (isDragging)
+    {
+      setTooltipRect(null);
+    }
+  }, [isDragging]);
 
   // Droppable setup - accepts PIN (reorder) or URL (create new pin)
   const { setNodeRef: setDropRef } = useDroppable({
@@ -274,7 +315,7 @@ export const PinnedIcon = ({
             style={{ width: iconSize + 8, height: iconSize + 8 }}
             {...attributes}
             {...listeners}
-            title={site.title}
+            aria-label={site.title || getTooltipText(site)}
             data-dnd-id={pinId}
             className={clsx(
               "group/pin relative flex items-center justify-center rounded",
@@ -283,6 +324,11 @@ export const PinnedIcon = ({
               isActive && !isDragging && "ring-2 ring-cyan-500 dark:ring-cyan-400"
             )}
             onClick={handleClick}
+            onMouseEnter={showTooltip}
+            onMouseLeave={hideTooltip}
+            onFocus={showTooltip}
+            onBlur={hideTooltip}
+            onContextMenu={hideTooltip}
           >
             {/* Drop indicator - before */}
             {showDropBefore && (
@@ -376,6 +422,11 @@ export const PinnedIcon = ({
           </ContextMenu.Content>
         </ContextMenu.Portal>
       </ContextMenu.Root>
+
+      {/* Instant name tooltip - suppressed while dragging or editing */}
+      {tooltipRect && !isDragging && !showEditModal && (
+        <InstantTooltip text={getTooltipText(site)} anchorRect={tooltipRect} />
+      )}
 
       <Dialog
         isOpen={showEditModal}
