@@ -154,6 +154,16 @@ Array<{
 - Logic: `src/utils/typedNavigation.ts`
 - Instances: 1 per extension (shared across windows)
 
+### `sidebar-folder-colors`
+User-assigned background colors of bookmark folders (set from a folder row's context menu). A colored folder tints its own row and every row below it; a sub-folder with its own color takes over for its subtree
+```typescript
+Record<string, chrome.tabGroups.ColorEnum>  // bookmark folder id -> color name, default {}
+```
+- Owner: `src/App.tsx` (via `useChromeLocalStorage`)
+- Consumers: `src/components/BookmarkTree.tsx` (row tint, context menu picker, drops entries of removed folders)
+- Logic: `src/utils/folderColors.ts` (`FolderColorMap`)
+- Instances: 1 per extension (shared across windows)
+
 ### `pinnedSites`
 Pinned sites list
 ```typescript

@@ -19,10 +19,12 @@ import { BookmarkEditModal } from './BookmarkEditModal';
 import { BookmarkTagsBulkDialog } from './BookmarkTagsBulkDialog';
 import { BookmarkCreateFolderModal } from './BookmarkCreateFolderModal';
 import * as ContextMenu from './menu/ContextMenu';
+import { useCloseContextMenu } from './menu/ContextMenu';
 import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
 import { parseTitleTags, collectTitleTags, retagTitle, prefixColorPalette } from '../utils/titlePrefix';
+import { FolderColorMap, getFolderTintClass, collectFolderIds } from '../utils/folderColors';
 import {
   Globe,
   Trash,
@@ -42,9 +44,10 @@ import {
   SquareStack,
   ArrowRightFromLine,
   Link,
-  Tags
+  Tags,
+  Palette
 } from 'lucide-react';
-import { getRandomGroupColor } from '../utils/groupColors';
+import { getRandomGroupColor, GROUP_COLOR_OPTIONS, COLOR_CIRCLE_SIZE } from '../utils/groupColors';
 import { SpaceFolderIcon } from './SpaceFolderIcon';
 import clsx from 'clsx';
 import {
@@ -153,6 +156,60 @@ const openBookmarkInMode = (
   }
 };
 
+// --- Folder color picker (context menu section) ---
+// The menu has no submenus, so the colors are an inline swatch row under a "Color" label.
+interface FolderColorPickerProps
+{
+  selected?: chrome.tabGroups.ColorEnum;
+  onSelect: (color: chrome.tabGroups.ColorEnum | null) => void;
+}
+
+const FolderColorPicker = ({ selected, onSelect }: FolderColorPickerProps) =>
+{
+  const closeMenu = useCloseContextMenu();
+  const pick = (color: chrome.tabGroups.ColorEnum | null) =>
+  {
+    onSelect(color);
+    closeMenu();
+  };
+
+  return (
+    <>
+      <ContextMenu.Separator />
+      <div className="px-3 pt-1 pb-1.5 text-gray-700 dark:text-gray-200">
+        <div className="flex items-center mb-1.5">
+          <Palette size={14} className="mr-2 flex-shrink-0" /> Color
+        </div>
+        <div className="flex gap-1.5">
+          {GROUP_COLOR_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => pick(opt.value)}
+              className={clsx(
+                COLOR_CIRCLE_SIZE,
+                "rounded-full border-2 transition-transform hover:scale-110 shrink-0",
+                opt.dot,
+                selected === opt.value
+                  ? "border-blue-500 ring-2 ring-blue-200 dark:ring-blue-800"
+                  : "border-transparent"
+              )}
+              title={opt.value}
+              aria-label={`Set folder color ${opt.value}`}
+              aria-pressed={selected === opt.value}
+            />
+          ))}
+        </div>
+      </div>
+      {selected && (
+        <ContextMenu.Item onSelect={() => onSelect(null)}>
+          <X size={14} className="mr-2 flex-shrink-0" /> No Color
+        </ContextMenu.Item>
+      )}
+    </>
+  );
+};
+
 // --- Bookmark Row (Pure UI) ---
 interface BookmarkRowProps {
   node: chrome.bookmarks.BookmarkTreeNode;
@@ -183,6 +240,9 @@ interface BookmarkRowProps {
   keepBookmarkNames?: boolean;  // always show node.title, never the live tab title
   prefixTags?: boolean;  // render "#tag name" (or legacy "tag · name") titles with each tag as a colored chip
   onFilterByTag?: (tag: string, append: boolean) => void;  // tag chip clicked (append = Shift held)
+  folderColors?: FolderColorMap;  // user-assigned folder background colors
+  onSetFolderColor?: (folderId: string, color: chrome.tabGroups.ColorEnum | null) => void;
+  inheritedColor?: chrome.tabGroups.ColorEnum;  // color of the nearest colored ancestor folder
   isSelected?: boolean;
   checkIsLoaded?: (bookmarkId: string) => boolean;
   checkIsAudible?: (bookmarkId: string) => boolean;
@@ -257,6 +317,9 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   keepBookmarkNames = false,
   prefixTags = false,
   onFilterByTag,
+  folderColors,
+  onSetFolderColor,
+  inheritedColor,
   isSelected,
   highlightedBookmarkId,
   onOpenBookmark,
@@ -287,6 +350,9 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
 }, ref) => {
   const isFolder = !node.url;
   const dndId = `bookmark-${node.id}`;
+  // Folder color: own color for a colored folder, else inherited from the nearest colored ancestor
+  const ownColor = isFolder ? folderColors?.get(node.id) : undefined;
+  const tintClassName = getFolderTintClass(ownColor, ownColor ?? inheritedColor);
   const isSpecialFolder = SPECIAL_FOLDER_IDS.includes(node.id);
 
   const isBeingDragged = isMultiDrag ? isSelected : activeId === node.id;
@@ -519,6 +585,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
               )}
               actions={actions}
               leadingIndicator={leadingIndicator}
+              tintClassName={showDropInto ? undefined : tintClassName}
             >
               <DropIndicators showBefore={showDropBefore} showAfter={showDropAfter} beforeIndentPx={beforeIndentPx} afterIndentPx={afterIndentPx} />
             </TreeRow>
@@ -589,6 +656,12 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
                 <ContextMenu.Item onSelect={() => onExpandAll(node.id)}>
                   <span className="w-[14px] mr-2" /> Expand All
                 </ContextMenu.Item>
+              )}
+              {onSetFolderColor && (
+                <FolderColorPicker
+                  selected={ownColor}
+                  onSelect={(color) => onSetFolderColor(node.id, color)}
+                />
               )}
               <ContextMenu.Separator />
               <ContextMenu.Item onSelect={() => onSort(node.id, 'name')}>
@@ -800,6 +873,9 @@ const BookmarkItem = (props: BookmarkRowProps) => {
   // Compute matchingSpace for folders
   const matchingSpace = isFolder && getMatchingSpace ? getMatchingSpace(node.id) : undefined;
 
+  // Children inherit this folder's own color, or keep the color this folder inherited
+  const childInheritedColor = props.folderColors?.get(node.id) ?? props.inheritedColor;
+
   return (
     <>
       {isInView ? (
@@ -824,6 +900,7 @@ const BookmarkItem = (props: BookmarkRowProps) => {
                 {...props} // Pass through all handlers
                 node={child}
                 depth={depth + 1}
+                inheritedColor={childInheritedColor}
                 isLoaded={checkIsLoaded ? checkIsLoaded(child.id) : false}
                 isAudible={checkIsAudible ? checkIsAudible(child.id) : false}
                 isActive={checkIsActive ? checkIsActive(child.id) : false}
@@ -870,6 +947,9 @@ interface BookmarkTreeProps {
   prefixTags?: boolean;
   // Tag chip clicked in a row: search for that tag (append = add to the current search)
   onFilterByTag?: (tag: string, append: boolean) => void;
+  // User-assigned folder background colors and their setter
+  folderColors?: FolderColorMap;
+  onFolderColorsChange?: (colors: FolderColorMap) => void;
   filterLiveTabs?: boolean;
   filterText?: string;
   activeSpace?: Space | null;
@@ -878,7 +958,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, onFilterByTag, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, onFilterByTag, folderColors = FolderColorMap.EMPTY, onFolderColorsChange, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab, activeTabId } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -922,6 +1002,33 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
   {
     return folderIdToSpace.get(folderId);
   }, [folderIdToSpace]);
+
+  // Latest folder colors, read by the onRemoved listener without re-subscribing on every change
+  const folderColorsRef = useRef(folderColors);
+  folderColorsRef.current = folderColors;
+
+  // Set (or clear, with null) a folder's background color from its context menu
+  const handleSetFolderColor = useCallback((folderId: string, color: chrome.tabGroups.ColorEnum | null) =>
+  {
+    onFolderColorsChange?.(folderColorsRef.current.with(folderId, color));
+  }, [onFolderColorsChange]);
+
+  // Drop the colors of removed folders (and of folders inside them) so the map doesn't keep stale ids
+  useEffect(() =>
+  {
+    if (!onFolderColorsChange) return;
+    const handleRemoved = (_id: string, removeInfo: chrome.bookmarks.BookmarkRemoveInfo) =>
+    {
+      const current = folderColorsRef.current;
+      const next = current.without(collectFolderIds(removeInfo.node));
+      if (next !== current)
+      {
+        onFolderColorsChange(next);
+      }
+    };
+    chrome.bookmarks?.onRemoved.addListener(handleRemoved);
+    return () => chrome.bookmarks?.onRemoved.removeListener(handleRemoved);
+  }, [onFolderColorsChange]);
 
   // Open all bookmarks in folder as a tab group
   const handleOpenAsTabGroup = useCallback(async (
@@ -2452,6 +2559,8 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
               keepBookmarkNames={keepBookmarkNames}
               prefixTags={prefixTags}
               onFilterByTag={onFilterByTag}
+              folderColors={folderColors}
+              onSetFolderColor={handleSetFolderColor}
               isSelected={isBookmarkSelected(node.id)}
               highlightedBookmarkId={highlightedBookmarkId}
               checkIsLoaded={isBookmarkLoaded}

@@ -46,6 +46,9 @@ const useContextMenuState = () =>
   return context;
 };
 
+// Close function of the enclosing menu, for custom controls that are not an Item (e.g. a swatch row)
+export const useCloseContextMenu = () => useContextMenuState().close;
+
 // --- Root ---
 interface RootRenderProps
 {

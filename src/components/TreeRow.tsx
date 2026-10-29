@@ -30,6 +30,7 @@ export interface TreeRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>,
   badges?: React.ReactNode;     // Content after the title (e.g. tab count, pin)
   children?: React.ReactNode;   // For absolute overlays like drop indicators
   hideIcon?: boolean;           // Hide the icon slot entirely (removes space)
+  tintClassName?: string;       // Background tint (e.g. folder color); ignored while the row is selected
 
   // DND props
   dndAttributes?: DraggableAttributes;
@@ -59,6 +60,7 @@ export const TreeRow = forwardRef<HTMLDivElement, TreeRowProps>(({
   badges,
   children,
   hideIcon,
+  tintClassName,
   dndAttributes,
   dndListeners,
   className,
@@ -76,6 +78,8 @@ export const TreeRow = forwardRef<HTMLDivElement, TreeRowProps>(({
         'group flex items-center h-7 rounded-md cursor-default select-none transition-colors relative pr-2 outline-none',
         // Selection style (brighter blue background)
         isSelected && 'bg-blue-200 dark:bg-blue-800/60 text-blue-800 dark:text-blue-50',
+        // Background tint (folder color) - selection background wins; rings still draw on top
+        !isSelected && tintClassName,
         // Active tab style (border ring, visually distinct from selection)
         isActive && !isSelected && 'text-gray-700 dark:text-gray-200',
         // Default style (ring hover) - only when neither active nor selected, and hover not disabled

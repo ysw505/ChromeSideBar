@@ -20,6 +20,7 @@ import { useTabs } from './hooks/useTabs';
 import { useBookmarks, refreshAllBookmarks } from './hooks/useBookmarks';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useChromeLocalStorage } from './hooks/useChromeLocalStorage';
+import { FolderColorMap, FOLDER_COLORS_KEY } from './utils/folderColors';
 import { useSwipeNavigation } from './hooks/useSwipeNavigation';
 import { FontSizeContext } from './contexts/FontSizeContext';
 import { BookmarkTabsProvider, useBookmarkTabsContext } from './contexts/BookmarkTabsContext';
@@ -74,6 +75,8 @@ interface SidebarContentProps
   keepBookmarkNames: boolean;
   prefixTags: boolean;
   onFilterByTag: (tag: string, append: boolean) => void;
+  folderColors: FolderColorMap;
+  onFolderColorsChange: (colors: FolderColorMap) => void;
   filterLiveTabs: boolean;
   filterText: string;
   tabGroupDisplayOrder: TabGroupDisplayOrder;
@@ -107,6 +110,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   keepBookmarkNames,
   prefixTags,
   onFilterByTag,
+  folderColors,
+  onFolderColorsChange,
   filterLiveTabs,
   filterText,
   tabGroupDisplayOrder,
@@ -214,6 +219,8 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         onFilterByTag={onFilterByTag}
+        folderColors={folderColors}
+        onFolderColorsChange={onFolderColorsChange}
         filterLiveTabs={filterLiveTabs}
         filterText={filterText}
         activeSpace={activeSpace}
@@ -586,6 +593,12 @@ function App() {
     'sidebar-prefix-tags',
     false,
     { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+  );
+  // User-assigned background colors of bookmark folders (folder row and everything under it)
+  const [folderColors, setFolderColors] = useChromeLocalStorage<FolderColorMap>(
+    FOLDER_COLORS_KEY,
+    FolderColorMap.EMPTY,
+    { parse: FolderColorMap.fromJSON, serialize: (v) => JSON.stringify(v) }
   );
   const [tabGroupDisplayOrder, setTabGroupDisplayOrder] = useLocalStorage<TabGroupDisplayOrder>(
     'sidebar-tab-group-display-order',
@@ -1353,6 +1366,8 @@ function App() {
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         onFilterByTag={handleFilterByTag}
+        folderColors={folderColors}
+        onFolderColorsChange={setFolderColors}
         filterLiveTabs={showFilterArea && filterLiveTabs}
         filterText={filterText}
         tabGroupDisplayOrder={tabGroupDisplayOrder}

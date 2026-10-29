@@ -55,6 +55,7 @@ Navigate back and forward through your recently used tabs—like undo/redo for t
   - Pin to pinned bar
   - Move to New Window (when loaded)
   - Expand All (folders only, recursively expands all subfolders)
+  - Color (folders only): tint the folder and everything under it with one of the tab group colors; a sub-folder's own color overrides it
 - Drag-and-drop to organize bookmarks
 - Drag tabs from Tabs section to create bookmarks
 - Click: Open as Arc-style tab
