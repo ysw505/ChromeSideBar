@@ -880,7 +880,7 @@ interface BookmarkTreeProps {
 
 export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, onFilterByTag, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
-  const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab } = useBookmarkTabsContext();
+  const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab, activeTabId } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
   const findSpaceForFolder = useFindSpaceForFolder(getBookmarkSegments, spaces);
 
@@ -1202,6 +1202,37 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     section: 'bookmarks',
     getItemsInRange: getBookmarkItemsInRange
   });
+
+  // Clear a stale single selection when the user moves to another tab outside the panel.
+  // A plain click selects the row and opens its tab; after switching tabs via the tab strip,
+  // keyboard, or a typed address opening a new tab, the blue row would otherwise stay painted
+  // even though its tab is no longer active. Multi-selections (2+) are deliberate and kept.
+  // If the bookmark's tab id is not known yet, nothing is cleared: when a closed bookmark is
+  // clicked, onActivated fires for the new tab before createItemTab stores the association,
+  // so the lookup returns undefined at that moment and the selection must survive.
+  // Deps are intentionally only activeTabId: this must run when the active tab changes, and
+  // reads the selection/mapping of the current render at that moment.
+  useEffect(() =>
+  {
+    if (activeTabId === null) return;
+
+    const selectedItems = getSelectedItems();
+
+    // Only a single selected bookmark is a candidate for clearing
+    if (selectedItems.length !== 1 || selectedItems[0].type !== 'bookmark') return;
+
+    const selectedTabId = getTabIdForBookmark(selectedItems[0].id);
+
+    // Clear only when the bookmark's tab is known and is not the newly active tab
+    if (selectedTabId !== undefined && selectedTabId !== activeTabId)
+    {
+      if (import.meta.env.DEV)
+      {
+        console.log('[BookmarkTree] clearing stale selection', selectedItems[0].id, selectedTabId, activeTabId);
+      }
+      clearSelection();
+    }
+  }, [activeTabId]);
 
   // Load expanded state from local storage on mount and on space switch
   useEffect(() =>

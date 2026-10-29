@@ -41,6 +41,7 @@ interface BookmarkTabsContextValue
   getPinnedLiveTitle: (pinnedId: string) => string | undefined;
   deassociatePinnedTab: (pinnedId: string) => Promise<void>;
   // Active item tracking
+  activeTabId: number | null;
   getActiveItemKey: () => string | null;
   // Tab filtering for sidebar
   getManagedTabIds: () => Set<number>;
@@ -364,11 +365,14 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     };
   }, []);
 
-  // Listen for active tab changes
+  // Listen for active tab changes in this panel's window only - onActivated fires
+  // for every window, and another window's tab switch must not change which row
+  // shows as active here (or clear this panel's selection)
   useEffect(() =>
   {
     const handleTabActivated = (activeInfo: chrome.tabs.TabActiveInfo) =>
     {
+      if (currentWindowId !== null && activeInfo.windowId !== currentWindowId) return;
       setActiveTabId(activeInfo.tabId);
     };
 
@@ -387,7 +391,7 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     {
       chrome.tabs?.onActivated?.removeListener(handleTabActivated);
     };
-  }, []);
+  }, [currentWindowId]);
 
   // Store association in session storage and local backup
   // tabUrl and tabIndex can be passed directly (e.g. from tab creation callback) to avoid
@@ -816,6 +820,7 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     getTabIdForPinned,
     getPinnedLiveTitle,
     deassociatePinnedTab,
+    activeTabId,
     getActiveItemKey,
     getManagedTabIds,
     getItemKeyForTab,
@@ -840,6 +845,7 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
     getTabIdForPinned,
     getPinnedLiveTitle,
     deassociatePinnedTab,
+    activeTabId,
     getActiveItemKey,
     getManagedTabIds,
     getItemKeyForTab,
