@@ -2,6 +2,7 @@
 // Run via the "Unit Test Search Parser" menu item (dev mode only)
 
 import { parseSearchQuery, matchesSearch, matchesFilter, ASTNode } from '../utils/searchParser';
+import { withInheritedTags } from '../utils/titlePrefix';
 
 interface TestResult
 {
@@ -403,6 +404,36 @@ const tests: Array<{ name: string; fn: () => void }> = [
       const ast = parseSearchQuery('#fin #kr')!;
       assert(matchesSearch('#fin #kr a', 'https://example.com', ast), 'Should match both tags');
       assert(!matchesSearch('#fin a', 'https://example.com', ast), 'Should not match one tag');
+    }
+  },
+
+  // Folder tags inherited by the bookmarks below (withInheritedTags builds the searched title)
+  {
+    name: 'withInheritedTags: folder tag makes a plain bookmark match #tag',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#beta')!;
+      assert(matchesSearch(withInheritedTags('argocd', ['beta']), 'https://example.com', ast), 'Should match inherited beta');
+      assert(!matchesSearch(withInheritedTags('argocd', []), 'https://example.com', ast), 'Should not match without inheritance');
+      assert(withInheritedTags('fin · argocd', []) === 'fin · argocd', 'No inheritance keeps the title as is');
+    }
+  },
+  {
+    name: 'withInheritedTags: inherited + own tags are both needed for #a #b',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#beta #pub')!;
+      assert(matchesSearch(withInheritedTags('#pub argocd', ['beta']), 'https://example.com', ast), 'Should match beta (folder) + pub (own)');
+      assert(!matchesSearch(withInheritedTags('#fin argocd', ['beta']), 'https://example.com', ast), 'Should not match without pub');
+    }
+  },
+  {
+    name: 'withInheritedTags: legacy own tags survive and the name is kept for plain terms',
+    fn: () =>
+    {
+      const title = withInheritedTags('pub · argocd', ['Beta']);
+      assert(matchesSearch(title, 'https://example.com', parseSearchQuery('#pub #beta')!), 'Should keep legacy pub and add beta');
+      assert(matchesSearch(title, 'https://example.com', parseSearchQuery('argocd')!), 'Should still match the name');
     }
   },
 

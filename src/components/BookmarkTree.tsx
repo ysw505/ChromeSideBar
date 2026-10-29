@@ -23,7 +23,7 @@ import { useCloseContextMenu } from './menu/ContextMenu';
 import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
-import { parseTitleTags, collectTitleTags, retagTitle, prefixColorPalette } from '../utils/titlePrefix';
+import { parseTitleTags, splitTitleTags, collectTitleTags, retagTitle, prefixColorPalette, withInheritedTags, nameWithoutTags } from '../utils/titlePrefix';
 import { FolderColorMap, getFolderTintClass } from '../utils/folderColors';
 import {
   Globe,
@@ -511,8 +511,9 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
   const showLiveTitle = !keepBookmarkNames && bookmarkOpenMode === 'arc' && isLoaded && !!liveTitle;
   const displayTitle = showLiveTitle ? liveTitle! : node.title;
 
-  // Bookmark rows only (not folders): show each tag of the label as a colored chip
-  const titleTags = prefixTags && !isFolder ? parseTitleTags(displayTitle) : undefined;
+  // Bookmark and folder rows: show each tag of the label as a colored chip, then the tag-stripped name.
+  // Children show only their own tags, not the ones inherited from their folders.
+  const titleTags = prefixTags ? parseTitleTags(displayTitle) : undefined;
   const titleLabel = titleTags ? (
     <>
       {titleTags.tags.map(tag => (
@@ -682,7 +683,7 @@ const BookmarkRow = forwardRef<HTMLDivElement, BookmarkRowProps>(({
                 </ContextMenu.Item>
               )}
               {onOpenAsTabGroup && (
-                <ContextMenu.Item onSelect={() => onOpenAsTabGroup(node.id, node.title)}>
+                <ContextMenu.Item onSelect={() => onOpenAsTabGroup(node.id, prefixTags ? nameWithoutTags(node.title) : node.title)}>
                   <FolderOpen size={14} className="mr-2" /> Open as Tab Group
                 </ContextMenu.Item>
               )}
@@ -1082,10 +1083,12 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     onShowToast?.(`Opened ${urls.length} tabs in new window`);
   }, [getAllBookmarksInFolder, onShowToast]);
 
-  // Recursively filter bookmarks based on a predicate function
+  // Recursively filter bookmarks based on a predicate function.
+  // inheritedTags: tags of the folders above `nodes` (within the filtered tree), passed to the predicate
   const filterBookmarksRecursive = useCallback((
     nodes: chrome.bookmarks.BookmarkTreeNode[],
-    predicate: (node: chrome.bookmarks.BookmarkTreeNode) => boolean
+    predicate: (node: chrome.bookmarks.BookmarkTreeNode, inheritedTags: readonly string[]) => boolean,
+    inheritedTags: readonly string[] = []
   ): chrome.bookmarks.BookmarkTreeNode[] =>
   {
     return nodes.reduce<chrome.bookmarks.BookmarkTreeNode[]>((acc, node) =>
@@ -1094,9 +1097,9 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
 
       if (isFolder)
       {
-        // For folders, recursively filter children
+        // For folders, recursively filter children; they inherit this folder's tags
         const filteredChildren = node.children
-          ? filterBookmarksRecursive(node.children, predicate)
+          ? filterBookmarksRecursive(node.children, predicate, [...inheritedTags, ...splitTitleTags(node.title).tags])
           : [];
         // Only include folder if it has filtered children
         if (filteredChildren.length > 0)
@@ -1107,7 +1110,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
       else
       {
         // For bookmarks, include only if predicate returns true
-        if (predicate(node))
+        if (predicate(node, inheritedTags))
         {
           acc.push(node);
         }
@@ -1151,10 +1154,11 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     {
       return rootBookmarks;
     }
-    return filterBookmarksRecursive(rootBookmarks, (node) =>
+    return filterBookmarksRecursive(rootBookmarks, (node, inheritedTags) =>
     {
       if (filterLiveTabs && !isBookmarkLoaded(node.id)) return false;
-      if (text.trim() && !matchesFilter(node.title, node.url ?? '', text)) return false;
+      // Folder tags count as the bookmark's own for "#tag" terms
+      if (text.trim() && !matchesFilter(withInheritedTags(node.title, inheritedTags), node.url ?? '', text)) return false;
       return true;
     });
   };

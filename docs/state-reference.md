@@ -164,6 +164,16 @@ Record<string, chrome.tabGroups.ColorEnum>  // bookmark folder id -> color name,
 - Logic: `src/utils/folderColors.ts` (`FolderColorMap`)
 - Instances: 1 per extension (shared across windows)
 
+### `sidebar-prefix-tags`
+"Tags in names": show the `#tags` (or legacy `tag · `) of bookmark and folder names as colored chips and edit them as chips in the edit dialog. A `#tag` search term matches bookmarks carrying that tag; folder tags are inherited by all bookmarks below for `#tag` searches
+```typescript
+'true' | 'false'  // default 'false'
+```
+- Owner: `src/App.tsx` (via `useChromeLocalStorage`)
+- Consumers: `src/components/BookmarkTree.tsx` (chips, search inheritance, tab group names), `src/components/BookmarkEditModal.tsx`, `src/components/SettingsDialog.tsx`
+- Logic: `src/utils/titlePrefix.ts`, `src/utils/searchParser.ts`
+- Instances: 1 per extension (shared across windows)
+
 ### `pinnedSites`
 Pinned sites list
 ```typescript

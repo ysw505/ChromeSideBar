@@ -36,8 +36,8 @@ export const BookmarkEditModal = ({
   const initialTagsRef = useRef<TitleTags | null>(null);
 
   const isCreateMode = !!createInParentId;
-  // Tags section: only for bookmarks (not folders) and only with the tags setting on
-  const editsTags = nameTags && (isCreateMode || !!node?.url);
+  // Tags section: for bookmarks and folders (folder tags are inherited in search), only with the tags setting on
+  const editsTags = nameTags && (isCreateMode || !!node);
 
   // Reset state and focus input when dialog opens
   useEffect(() =>

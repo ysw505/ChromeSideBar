@@ -140,6 +140,25 @@ export function formatTitleTags(tags: string[], name: string): string
   return cleanName ? `${hashtags} ${cleanName}` : hashtags;
 }
 
+// Title used for "#tag" search: the tags of the enclosing folders are added in front of the
+// node's own tags, so a bookmark inside "#beta 베타" matches "#beta". Unchanged when nothing is inherited.
+export function withInheritedTags(title: string, inheritedTags: readonly string[]): string
+{
+  if (inheritedTags.length === 0)
+  {
+    return title;
+  }
+  const own = splitTitleTags(title);
+  return formatTitleTags([...inheritedTags, ...own.tags], own.name);
+}
+
+// Title with its tags removed, for names that leave the sidebar (tab group titles).
+// Falls back to the raw title when nothing but tags is left.
+export function nameWithoutTags(title: string): string
+{
+  return splitTitleTags(title).name || title;
+}
+
 // Bulk tag edit for one title: drop the `remove` tags, append the `add` tags it lacks,
 // and rebuild it in the canonical "#tag name" form (legacy " · " titles get rewritten too)
 export function retagTitle(title: string, add: string[], remove: Set<string>): string
@@ -201,20 +220,17 @@ export function collectTitleTags(nodes: chrome.bookmarks.BookmarkTreeNode[], pre
   const inFolder = new TagUsageCounts();
   const everywhere = new TagUsageCounts();
 
-  // Walk the whole tree and count tags of bookmark (url) nodes
+  // Walk the whole tree and count tags of bookmarks and folders (folder tags are inherited in search)
   const visit = (node: chrome.bookmarks.BookmarkTreeNode): void =>
   {
-    if (node.url)
+    const parsed = parseTitleTags(node.title);
+    // Count each tag of this bookmark or folder
+    for (const tag of parsed?.tags ?? [])
     {
-      const parsed = parseTitleTags(node.title);
-      // Count each tag of this bookmark
-      for (const tag of parsed?.tags ?? [])
+      everywhere.add(tag);
+      if (preferredParentId && node.parentId === preferredParentId)
       {
-        everywhere.add(tag);
-        if (preferredParentId && node.parentId === preferredParentId)
-        {
-          inFolder.add(tag);
-        }
+        inFolder.add(tag);
       }
     }
     node.children?.forEach(visit);
