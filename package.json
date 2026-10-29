@@ -1,7 +1,7 @@
 {
   "name": "chrome-sidebar",
   "private": true,
-  "version": "1.0.362",
+  "version": "1.0.369",
   "type": "module",
   "scripts": {
     "dev": "vite",
