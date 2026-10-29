@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { normalizeTag, prefixColorPalette } from '../utils/titlePrefix';
+import { normalizeTag, prefixColorPalette, tagKey } from '../utils/titlePrefix';
 
 // Most tag suggestions shown under the selected tags
 const MAX_TAG_SUGGESTIONS = 20;
@@ -16,11 +16,14 @@ export interface TagEditorProps
 // Tag chips + "Add tag…" input + suggestion chips, shared by the single and bulk tag dialogs
 export const TagEditor = ({ tags, suggestions, onChange, input, onInputChange }: TagEditorProps) =>
 {
-  // Add a typed or suggested tag (normalised, no duplicates)
+  // Whether a tag (any case) is already selected
+  const isSelected = (tag: string) => tags.some(t => tagKey(t) === tagKey(tag));
+
+  // Add a typed or suggested tag (normalised, no case-insensitive duplicates)
   const addTag = (rawTag: string) =>
   {
     const tag = normalizeTag(rawTag);
-    if (tag && !tags.includes(tag))
+    if (tag && !isSelected(tag))
     {
       onChange([...tags, tag]);
     }
@@ -47,7 +50,7 @@ export const TagEditor = ({ tags, suggestions, onChange, input, onInputChange }:
     }
   };
 
-  const visibleSuggestions = suggestions.filter(tag => !tags.includes(tag)).slice(0, MAX_TAG_SUGGESTIONS);
+  const visibleSuggestions = suggestions.filter(tag => !isSelected(tag)).slice(0, MAX_TAG_SUGGESTIONS);
 
   return (
     <>

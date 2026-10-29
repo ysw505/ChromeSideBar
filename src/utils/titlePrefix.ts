@@ -17,6 +17,35 @@ export interface TitleTags
   name: string;
 }
 
+// Comparison key for a tag: "Fin" and "fin" are the same tag. Only comparisons, dedupe,
+// counts and colors use the key; the first spelling seen is what gets shown or written back.
+export function tagKey(tag: string): string
+{
+  return tag.toLocaleLowerCase();
+}
+
+// Ordered tag list without case-insensitive duplicates, keeping each tag's first spelling
+class TagList
+{
+  private readonly items: string[] = [];
+  private readonly keys = new Set<string>();
+
+  add(tag: string): void
+  {
+    const key = tagKey(tag);
+    if (!this.keys.has(key))
+    {
+      this.keys.add(key);
+      this.items.push(tag);
+    }
+  }
+
+  toArray(): string[]
+  {
+    return [...this.items];
+  }
+}
+
 // Collapse whitespace runs and trim
 function collapseSpaces(text: string): string
 {
@@ -26,7 +55,7 @@ function collapseSpaces(text: string): string
 // Hashtag form: pull out every "#word" token that contains a letter
 function parseHashtags(title: string): TitleTags
 {
-  const tags: string[] = [];
+  const tags = new TagList();
   const name = title.replace(HASHTAG_TOKEN, (token: string, lead: string, word: string) =>
   {
     // Numbers-only tokens like "#123" stay in the name
@@ -34,13 +63,10 @@ function parseHashtags(title: string): TitleTags
     {
       return token;
     }
-    if (!tags.includes(word))
-    {
-      tags.push(word);
-    }
+    tags.add(word);
     return lead || ' ';
   });
-  return { tags, name: collapseSpaces(name) };
+  return { tags: tags.toArray(), name: collapseSpaces(name) };
 }
 
 // Legacy form: "a · b · name" -> tags [a, b], name "name"
@@ -51,19 +77,27 @@ function parseLegacySeparator(title: string): TitleTags
   {
     return { tags: [], name: title.trim() };
   }
-  const tags = segments.slice(0, -1).filter((tag, i, all) => all.indexOf(tag) === i);
-  return { tags, name: segments[segments.length - 1] };
+  const tags = new TagList();
+  segments.slice(0, -1).forEach(tag => tags.add(tag));
+  return { tags: tags.toArray(), name: segments[segments.length - 1] };
+}
+
+// Split a title into tags + name, even when nothing is left as the name ("#fin" -> tags [fin], name "")
+export function splitTitleTags(title: string): TitleTags
+{
+  // Hashtags win; the " · " form is only read when no hashtag is present
+  const parsed = parseHashtags(title);
+  if (parsed.tags.length === 0)
+  {
+    return parseLegacySeparator(title);
+  }
+  return parsed;
 }
 
 // Split a title into tags + name. Undefined when there are no tags or nothing is left as the name.
 export function parseTitleTags(title: string): TitleTags | undefined
 {
-  // Hashtags win; the " · " form is only read when no hashtag is present
-  let parsed = parseHashtags(title);
-  if (parsed.tags.length === 0)
-  {
-    parsed = parseLegacySeparator(title);
-  }
+  const parsed = splitTitleTags(title);
   if (parsed.tags.length === 0 || !parsed.name)
   {
     return undefined;
@@ -80,16 +114,17 @@ export function normalizeTag(tag: string): string
 // Canonical title: tags first as hashtags, then the name ("#fin #kr argocd")
 export function formatTitleTags(tags: string[], name: string): string
 {
-  const cleanTags: string[] = [];
-  // Normalise, drop empties and duplicates, keep order
+  const tagList = new TagList();
+  // Normalise, drop empties and (case-insensitive) duplicates, keep order
   for (const tag of tags)
   {
     const clean = normalizeTag(tag);
-    if (clean && !cleanTags.includes(clean))
+    if (clean)
     {
-      cleanTags.push(clean);
+      tagList.add(clean);
     }
   }
+  const cleanTags = tagList.toArray();
   const cleanName = name.trim();
   if (cleanTags.length === 0)
   {
@@ -116,30 +151,40 @@ export function retagTitle(title: string, add: string[], remove: Set<string>): s
     }
     return formatTitleTags(add, title);
   }
-  const kept = parsed.tags.filter(tag => !remove.has(tag));
-  const added = add.filter(tag => !parsed.tags.includes(tag));
-  return formatTitleTags([...kept, ...added], parsed.name);
+  // Compare by tag key so "Fin" removes / already covers "fin"
+  const removeKeys = new Set([...remove].map(tagKey));
+  const kept = parsed.tags.filter(tag => !removeKeys.has(tagKey(tag)));
+  // formatTitleTags drops added tags whose key is already kept
+  return formatTitleTags([...kept, ...add], parsed.name);
 }
 
-// How often each tag is used, with a stable "most used first, then A-Z" order
+// How often each tag is used, with a stable "most used first, then A-Z" order.
+// Counted by tag key; the first spelling seen is the one returned.
 class TagUsageCounts
 {
   private readonly counts = new Map<string, number>();
+  private readonly spellings = new Map<string, string>();
 
   add(tag: string): void
   {
-    this.counts.set(tag, (this.counts.get(tag) ?? 0) + 1);
+    const key = tagKey(tag);
+    this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
+    if (!this.spellings.has(key))
+    {
+      this.spellings.set(key, tag);
+    }
   }
 
   has(tag: string): boolean
   {
-    return this.counts.has(tag);
+    return this.counts.has(tagKey(tag));
   }
 
   mostUsedFirst(): string[]
   {
-    return [...this.counts.keys()].sort((a, b) =>
+    const keys = [...this.counts.keys()].sort((a, b) =>
       (this.counts.get(b)! - this.counts.get(a)!) || a.localeCompare(b));
+    return keys.map(key => this.spellings.get(key)!);
   }
 }
 
@@ -196,7 +241,8 @@ export class PrefixColorPalette
 
   classesFor(prefix: string): string
   {
-    return this.classes[PrefixColorPalette.hash(prefix) % this.classes.length];
+    // Hash the tag key so "Fin" and "fin" get the same color
+    return this.classes[PrefixColorPalette.hash(tagKey(prefix)) % this.classes.length];
   }
 
   // Deterministic 32-bit string hash (FNV-1a), unsigned

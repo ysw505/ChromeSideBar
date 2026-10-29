@@ -1,6 +1,26 @@
 // Advanced search parser with boolean operators
 // Supports: && (AND), || (OR), ! (NOT), (), "quoted strings", 'single quotes'
 // Space between terms is implicit AND
+// A "#tag" term matches bookmarks carrying that tag (see titlePrefix), not a substring
+
+import { splitTitleTags, tagKey } from './titlePrefix';
+
+// A term that is one hashtag token, e.g. "#fin" (no spaces, no second "#")
+const HASHTAG_TERM = /^#[^\s#]+$/;
+
+// Same rule as titlePrefix: a tag contains a letter, so "#123" stays a plain substring term
+const HAS_LETTER = /\p{L}/u;
+
+// The tag a term asks for ("#fin" -> "fin"), or undefined when the term is ordinary text
+function hashtagOfTerm(term: string): string | undefined
+{
+  if (!HASHTAG_TERM.test(term))
+  {
+    return undefined;
+  }
+  const tag = term.slice(1);
+  return HAS_LETTER.test(tag) ? tag : undefined;
+}
 
 // AST Node Types
 export type ASTNode =
@@ -321,7 +341,17 @@ export function matchesSearch(title: string, url: string, ast: ASTNode): boolean
     switch (node.type)
     {
       case 'TERM':
+      {
+        // "#tag": the bookmark has that tag exactly (case-insensitive), so "#gov-kr" skips "#gov-krs".
+        // splitTitleTags so a tags-only title ("#fin") still counts as tagged
+        const tag = hashtagOfTerm(node.value);
+        if (tag !== undefined)
+        {
+          const key = tagKey(tag);
+          return splitTitleTags(title).tags.some(t => tagKey(t) === key);
+        }
         return text.includes(node.value.toLowerCase());
+      }
 
       case 'AND':
         return evaluate(node.left) && evaluate(node.right);

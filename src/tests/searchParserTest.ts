@@ -346,6 +346,66 @@ const tests: Array<{ name: string; fn: () => void }> = [
     }
   },
 
+  // "#tag" terms match the bookmark's tags exactly, not as a substring
+  {
+    name: 'matchesSearch: #tag matches a hashtag title',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#fin')!;
+      assert(matchesSearch('#fin #kr argocd', 'https://example.com', ast), 'Should match tag fin');
+    }
+  },
+  {
+    name: 'matchesSearch: #tag does not match a longer tag',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#fin')!;
+      assert(!matchesSearch('#finance stuff', 'https://example.com', ast), 'Should not match tag finance');
+    }
+  },
+  {
+    name: 'matchesSearch: #tag matches a legacy " · " title',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#fin')!;
+      assert(matchesSearch('fin · argocd', 'https://example.com', ast), 'Should match legacy tag fin');
+    }
+  },
+  {
+    name: 'matchesSearch: #tag ignores case',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#Fin')!;
+      assert(matchesSearch('#fin argocd', 'https://example.com', ast), 'Should match tag fin');
+    }
+  },
+  {
+    name: 'matchesSearch: #123 stays a plain substring',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#123')!;
+      assert(matchesSearch('Issue #123', 'https://example.com', ast), 'Should match substring #123');
+    }
+  },
+  {
+    name: 'matchesSearch: !#tag excludes tagged bookmarks',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('!#fin')!;
+      assert(!matchesSearch('#fin x', 'https://example.com', ast), 'Should exclude tag fin');
+      assert(matchesSearch('#kr y', 'https://example.com', ast), 'Should keep tag kr');
+    }
+  },
+  {
+    name: 'matchesSearch: #tag #tag needs both tags',
+    fn: () =>
+    {
+      const ast = parseSearchQuery('#fin #kr')!;
+      assert(matchesSearch('#fin #kr a', 'https://example.com', ast), 'Should match both tags');
+      assert(!matchesSearch('#fin a', 'https://example.com', ast), 'Should not match one tag');
+    }
+  },
+
   // matchesFilter tests (convenience function)
   {
     name: 'matchesFilter: empty query matches everything',

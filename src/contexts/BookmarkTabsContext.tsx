@@ -525,7 +525,9 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
 
   // Reuse an unassociated tab in this window that already shows the item's
   // URL (e.g. opened from the omnibox or a link), instead of creating a
-  // duplicate. Returns the adopted tab ID, or undefined if none matched.
+  // duplicate. Chrome-pinned tabs are never adopted; with a Space, tabs in a
+  // tab group are skipped too, since adopting would regroup them into the
+  // Space's group. Returns the adopted tab ID, or undefined if none matched.
   const adoptSameUrlTab = useCallback(async (
     itemKey: string,
     url: string,
@@ -536,7 +538,8 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
 
     const tabs = await chrome.tabs.query({ windowId: currentWindowId });
     const associatedTabIds = new Set(tabToItem.keys());
-    const tab = sameUrlTabFinder.find(tabs, url, associatedTabIds);
+    // Skip grouped tabs on the same condition adoptExistingTab regroups on (a Space is given)
+    const tab = sameUrlTabFinder.find(tabs, url, associatedTabIds, { skipGrouped: !!spaceId });
     if (tab?.id === undefined) return undefined;
 
     const tabId = tab.id;

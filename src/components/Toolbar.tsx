@@ -512,6 +512,8 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
     if (isArrow && inputValue.trim() && onMoveHighlight)
     {
       e.preventDefault();
+      // Close the recent-searches list so it doesn't cover the moving highlight
+      setShowDropdown(false);
       onMoveHighlight(e.key === 'ArrowDown' ? 1 : -1);
     }
     else if (e.key === 'ArrowDown')

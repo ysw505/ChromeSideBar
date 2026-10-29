@@ -34,6 +34,7 @@ import { useFontSize } from './contexts/FontSizeContext';
 import { getIconUrl } from './utils/iconify';
 import { isEmoji } from './utils/emoji';
 import { GROUP_COLORS, getSpaceBgColor } from './utils/groupColors';
+import { tagKey } from './utils/titlePrefix';
 import { Settings, Info, Upload, Download, RefreshCw, LayoutGrid, Undo2, Sparkles, Newspaper, Mail, Heart } from 'lucide-react';
 import { SectionHeader } from './components/SectionHeader';
 import { SpaceContextMenuContent } from './components/SpaceContextMenuContent';
@@ -830,7 +831,8 @@ function App() {
   {
     const token = `#${tag}`;
     const current = filterText.trim();
-    const alreadyHasToken = current.split(/\s+/).includes(token);
+    // Tags compare by key, so "#Fin" already covers "#fin"
+    const alreadyHasToken = current.split(/\s+/).some(word => tagKey(word) === tagKey(token));
     let newText = token;
     // Shift+click with a search already typed: add the tag (or keep the search as is if it has it)
     if (append && current)

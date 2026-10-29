@@ -647,7 +647,7 @@ Adjacent behaviour that shouldn't break. Automated in `src/tests/inpanel/cases/s
 
 ## Section G - Opening an item reuses a same-URL tab
 
-Clicking a bookmark or pinned site with no live tab first looks for a tab in the current window that already shows the same URL (fragment ignored, query string and scheme kept) and is not associated with any other bookmark/pin. If one exists it is activated and associated instead of opening a duplicate. Automated in `src/tests/inpanel/cases/sectionG.ts`.
+Clicking a bookmark or pinned site with no live tab first looks for a tab in the current window that already shows the same URL (fragment ignored, query string and scheme kept) and is not associated with any other bookmark/pin. A tab that is still loading matches on its pending URL only, so a tab navigating away from the page is not reused. Chrome-pinned tabs are never reused, and when the item opens in a Space, tabs already in a tab group are skipped so they are not moved out of their group. If one exists it is activated and associated instead of opening a duplicate. Automated in `src/tests/inpanel/cases/sectionG.ts`.
 
 ### G.1 Opening a bookmark adopts an unassociated tab with the same URL
 

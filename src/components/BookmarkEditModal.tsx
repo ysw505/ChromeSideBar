@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Dialog } from './Dialog';
 import { TagEditor } from './TagEditor';
-import { parseTitleTags, formatTitleTags } from '../utils/titlePrefix';
+import { splitTitleTags, formatTitleTags, tagKey, TitleTags } from '../utils/titlePrefix';
 
 export interface BookmarkEditModalProps
 {
@@ -32,6 +32,8 @@ export const BookmarkEditModal = ({
   const [url, setUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Tags + name the edited title split into when the dialog opened (edit mode with tags only)
+  const initialTagsRef = useRef<TitleTags | null>(null);
 
   const isCreateMode = !!createInParentId;
   // Tags section: only for bookmarks (not folders) and only with the tags setting on
@@ -44,6 +46,7 @@ export const BookmarkEditModal = ({
     {
       setError(null);  // Clear any previous error
       setTagInput('');
+      initialTagsRef.current = null;
       if (isCreateMode)
       {
         // Create mode: start with empty fields
@@ -53,8 +56,10 @@ export const BookmarkEditModal = ({
       }
       else if (node)
       {
-        // Edit mode: populate from existing node, splitting tags off the name when editing tags
-        const parsed = editsTags ? parseTitleTags(node.title) : undefined;
+        // Edit mode: populate from existing node, splitting tags off the name when editing tags.
+        // The loose split keeps a tags-only title ("#fin") as tags + empty name, so "Name is required" applies.
+        const parsed = editsTags ? splitTitleTags(node.title) : undefined;
+        initialTagsRef.current = parsed ?? null;
         setTitle(parsed ? parsed.name : node.title);
         setTags(parsed ? parsed.tags : []);
         setUrl(node.url || '');
@@ -80,6 +85,21 @@ export const BookmarkEditModal = ({
     return `https://${trimmed}`;
   };
 
+  // Tags and name are as the dialog opened them (and no tag is typed). Saving then keeps the
+  // original title as is, so an unrelated edit (e.g. only the URL) doesn't rewrite a
+  // third-party title like GitHub's "Issues · owner/repo" into "#Issues owner/repo".
+  const isTagsAndNameUnchanged = (): boolean =>
+  {
+    const initial = initialTagsRef.current;
+    if (!initial || tagInput.trim())
+    {
+      return false;
+    }
+    const sameTags = tags.length === initial.tags.length &&
+      tags.every((tag, i) => tagKey(tag) === tagKey(initial.tags[i]));
+    return sameTags && title.trim() === initial.name;
+  };
+
   const handleSubmit = async (e: React.FormEvent) =>
   {
     e.preventDefault();
@@ -90,8 +110,15 @@ export const BookmarkEditModal = ({
       return;
     }
     const normalizedUrl = normalizeUrl(url);
-    // With tags on, the saved title is rebuilt as "#tag1 #tag2 name" (a typed but un-added tag counts too)
-    const savedTitle = editsTags ? formatTitleTags([...tags, tagInput], title) : title;
+    // With tags on, the saved title is rebuilt as "#tag1 #tag2 name" (a typed but un-added tag counts too),
+    // unless tags and name were left as they were - then the original title is kept
+    let savedTitle = title;
+    if (editsTags)
+    {
+      savedTitle = !isCreateMode && node && isTagsAndNameUnchanged()
+        ? node.title
+        : formatTitleTags([...tags, tagInput], title);
+    }
     if (isCreateMode && onCreate && createInParentId)
     {
       const errorMsg = await onCreate(createInParentId, savedTitle, normalizedUrl);

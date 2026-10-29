@@ -2,33 +2,40 @@ import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import { Dialog } from './Dialog';
 import { TagEditor } from './TagEditor';
-import { parseTitleTags, normalizeTag, prefixColorPalette } from '../utils/titlePrefix';
+import { parseTitleTags, normalizeTag, prefixColorPalette, tagKey } from '../utils/titlePrefix';
 
-// How many of the selected bookmarks carry each tag (first-seen order)
+// How many of the selected bookmarks carry each tag (first-seen order).
+// Grouped by tag key, so "Fin" and "fin" count as one tag shown with its first spelling.
 class TagCoverage
 {
   private readonly counts = new Map<string, number>();
+  private readonly spellings = new Map<string, string>();
 
   constructor(nodes: chrome.bookmarks.BookmarkTreeNode[], readonly total: number = nodes.length)
   {
-    // Count each tag once per bookmark
+    // Count each tag once per bookmark (parseTitleTags already dedupes by key within a title)
     for (const node of nodes)
     {
       for (const tag of parseTitleTags(node.title)?.tags ?? [])
       {
-        this.counts.set(tag, (this.counts.get(tag) ?? 0) + 1);
+        const key = tagKey(tag);
+        this.counts.set(key, (this.counts.get(key) ?? 0) + 1);
+        if (!this.spellings.has(key))
+        {
+          this.spellings.set(key, tag);
+        }
       }
     }
   }
 
   tags(): string[]
   {
-    return [...this.counts.keys()];
+    return [...this.spellings.values()];
   }
 
   countOf(tag: string): number
   {
-    return this.counts.get(tag) ?? 0;
+    return this.counts.get(tagKey(tag)) ?? 0;
   }
 
   isOnAll(tag: string): boolean
@@ -78,7 +85,8 @@ export const BookmarkTagsBulkDialog = ({
 
   // A typed but not yet entered tag counts as added (same as the single Edit dialog)
   const typedTag = normalizeTag(tagInput);
-  const addedWithTyped = typedTag && !added.includes(typedTag) ? [...added, typedTag] : added;
+  const typedIsNew = typedTag && !added.some(tag => tagKey(tag) === tagKey(typedTag));
+  const addedWithTyped = typedIsNew ? [...added, typedTag] : added;
   const hasChanges = addedWithTyped.length > 0 || removed.size > 0;
 
   const toggleRemoved = (tag: string) =>
