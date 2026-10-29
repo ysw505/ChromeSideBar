@@ -14,6 +14,24 @@ https://chromewebstore.google.com/detail/jmmgjadgeeicdbagekohgmaipoekgcbn?utm_so
 - **Drag & drop:** Reorganize bookmarks, folders, tabs, and groups easily
 - **Filter & search:** Find items by text, filter by live tabs or playing audio
 
+## What this fork adds
+
+This is a fork of [monemone-org/ChromeSideBar](https://github.com/monemone-org/ChromeSideBar). Everything above and below is upstream behavior; the items here are added by the fork.
+
+- **One-click folders:** clicking anywhere on a bookmark folder row expands or collapses it
+- **Flatten the Bookmarks Bar:** optional setting that lists the Bookmarks Bar contents at the top level, without a folder row
+- **Keyboard shortcuts:** `Ctrl+B` (`Cmd+B` on Mac) toggles the side panel; `prev-space` / `next-space` commands cycle Spaces; `focus-filter-input` command focuses the search box
+- **Focus search on open:** optional setting that focuses the search box each time the side panel opens
+- **Same-URL tab reuse:** opening a bookmark adopts an already open tab with the same URL instead of creating another one
+- **Keep bookmark names:** optional setting that keeps the bookmark title while its tab is open
+- **Search Enter / arrow keys:** Enter in the search box opens the first visible bookmark; the up/down arrow keys choose which row Enter opens
+- **`#tag` chips:** `#tag` tokens at the start of a bookmark or folder name show as colored chips; click a chip to search for it; a tag editor in the edit dialog; bulk "Edit Tags…" for several selected bookmarks
+- **Tag-aware search:** a `#tag` search term matches that tag exactly, folder tags apply to the bookmarks below them, and the search box paints `#tag` terms as pills
+- **Typed addresses in a new tab:** optional setting that moves an address typed into a bookmark's tab to a new tab
+- **Folder colors:** tint a bookmark folder and everything under it from the folder's context menu
+- **Instant pinned names:** pinned icons show their name as soon as the mouse is over them
+- **Selection cleanup:** a single selected bookmark is deselected when the active tab changes to another tab
+
 ## Background
 
 I've been using Arc Browser for a while. When Arc paused development, I started looking at Chrome and other Chromium-based browsers. The one thing I really missed was Arc's sidebar—how it puts favorite sites, pinned pages, and tabs all in one vertical list.
@@ -42,6 +60,7 @@ Navigate back and forward through your recently used tabs—like undo/redo for t
 - Click: Open as Arc-style tab
 - Cmd/Ctrl+Click: Open in new background tab, Shift+Click: Open in new window
 - Open indicator: Circular dot for opened state, triangle for playing audio
+- Hover an icon to see its name right under it, without the browser tooltip delay
 
 ### Bookmarks
 
@@ -59,9 +78,18 @@ Navigate back and forward through your recently used tabs—like undo/redo for t
 - Drag-and-drop to organize bookmarks
 - Drag tabs from Tabs section to create bookmarks
 - Click: Open as Arc-style tab
+  - If the bookmark has no tab of its own, an open tab with the same URL is adopted instead of creating a new one (the `#hash` is ignored, the query string must match; Chrome-pinned tabs are never adopted; in a Space, tabs that are in another tab group are skipped)
+- Click a folder row to expand or collapse it (Cmd/Ctrl/Shift+Click selects instead)
 - Cmd/Ctrl+Click: Open in new background tab, Shift+Click: Open in new window
 - Audio indicator (speaker icon) for playing audio
 - Close tab via X button on hover
+- `#tag` chips (when "Show #tags in bookmark names as colored chips" is on):
+  - `#tag` tokens at the start of a bookmark or folder name, such as `#fin #kr argocd`, show as colored chips; old `fin · argocd` names are read the same way
+  - Click a chip to search for `#tag`; Shift+Click adds it to the current search
+  - The Edit dialog has a tag editor
+  - Right-click several selected bookmarks and choose "Edit Tags…" to add or remove tags in bulk
+  - "Open as Tab Group" on a folder uses the name without its tags
+- Folder color: the tint covers the folder row and everything under it
 
 ### Active Tabs
 
@@ -145,6 +173,11 @@ Toolbar at the top with filter options:
 - **Text search bar**: Search by title or URL across pinned sites, bookmarks, and tabs
   - Dropdown shows saved and recent filters (last 5 used)
   - Save button to persist current filter
+  - Press Enter to open the first visible bookmark; use the up/down arrow keys to choose the row Enter opens
+  - `#tag` search term: matches bookmarks with exactly that tag (case-insensitive); `#gov-kr` does not match `#gov-krs`. A tag on a folder counts for every bookmark below it, so `#beta #pub` narrows to the `#pub` ones inside a `#beta` folder
+  - `#tag` terms are painted as the same colored pills as in the bookmark tree
+  - When the word at the caret equals an existing tag, a hint offers to turn it into `#tag` with Enter or Tab (Escape dismisses it)
+  - Backspace right after a pill, or Delete right before one, removes the whole pill
 - **Search bar toggle**: Show/hide the text search bar (hidden by default)
 - **Live tabs filter**: Show only bookmarks/pins that have an open tab
 - **Audible filter**: Show only items playing audio/video
@@ -162,6 +195,11 @@ Gear icon in the bottom-left corner:
   - In new tab: Opens bookmark in a new background tab
   - In active tab: Replaces the current tab with the bookmark
 - **Sort tab groups first**: When sorting tabs, keep tab groups at the top
+- **Show Bookmarks Bar contents at the top level**: List the items inside "Bookmarks Bar" directly in the All view, without the folder row (default: off)
+- **Keep bookmark names for open bookmarks**: Keep the bookmark title instead of swapping in the page title while its tab is open (default: off)
+- **Typed addresses open in a new tab**: When a bookmark's tab is sent to another host from the address bar, that address opens in a new tab and the bookmark's tab goes back to its page (scheme, port and a leading `www.` are ignored; the page reloads, so it flashes briefly) (default: off)
+- **Show #tags in bookmark names as colored chips**: See Bookmarks above (default: off)
+- **Focus the search box when the side panel opens**: Also shows the search bar if it is hidden (default: off)
 
 ### General
 
@@ -170,6 +208,9 @@ Gear icon in the bottom-left corner:
   - `Cmd+Shift+E` (Mac) / `Ctrl+Shift+E` (Windows/Linux): Open the sidebar
   - `Cmd+Shift+<` / `Cmd+Shift+>`: Navigate tab history
   - `Alt+Shift+F`: Toggle saved filters dropdown
+  - `Ctrl+B` (Windows/Linux) / `Cmd+B` (Mac): Toggle the side panel (same as clicking the toolbar icon)
+  - `prev-space` / `next-space`: Switch to the previous / next Space (wraps around; no default keys)
+  - `focus-filter-input`: Focus the search box (no default key; the side panel must be open)
   - Customize shortcuts via `chrome://extensions/shortcuts`
 
 ### Permissions
