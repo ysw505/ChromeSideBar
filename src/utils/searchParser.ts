@@ -3,13 +3,26 @@
 // Space between terms is implicit AND
 // A "#tag" term matches bookmarks carrying that tag (see titlePrefix), not a substring
 
-import { splitTitleTags, tagKey } from './titlePrefix';
+import { splitTitleTags, tagKey, hasLetter } from './titlePrefix';
 
 // A term that is one hashtag token, e.g. "#fin" (no spaces, no second "#")
 const HASHTAG_TERM = /^#[^\s#]+$/;
 
-// Same rule as titlePrefix: a tag contains a letter, so "#123" stays a plain substring term
-const HAS_LETTER = /\p{L}/u;
+// Characters that end a search term (regex character-class body): whitespace, parentheses,
+// "!", quotes and the "&"/"|" of the && / || operators. The tokenizer below, the "#tag" pill
+// overlay and the search box's caret/pill handling all split words with this one definition.
+export const TERM_BOUNDARY_CHARS = '\\s()!"\'&|';
+
+const TERM_BOUNDARY = new RegExp(`[${TERM_BOUNDARY_CHARS}]`);
+
+// A run of term characters at the start of the text
+const TERM_RUN = new RegExp(`^[^${TERM_BOUNDARY_CHARS}]+`);
+
+// True when the single character ch ends a search term
+export function isTermBoundary(ch: string): boolean
+{
+  return TERM_BOUNDARY.test(ch);
+}
 
 // The tag a term asks for ("#fin" -> "fin"), or undefined when the term is ordinary text
 export function hashtagOfTerm(term: string): string | undefined
@@ -19,7 +32,8 @@ export function hashtagOfTerm(term: string): string | undefined
     return undefined;
   }
   const tag = term.slice(1);
-  return HAS_LETTER.test(tag) ? tag : undefined;
+  // Same rule as titlePrefix: a tag contains a letter, so "#123" stays a plain substring term
+  return hasLetter(tag) ? tag : undefined;
 }
 
 // AST Node Types
@@ -157,7 +171,7 @@ function tokenize(query: string): Token[] | null
     }
 
     // Term: anything else until whitespace or special char
-    const termMatch = query.slice(pos).match(/^[^\s()"'|&!]+/);
+    const termMatch = query.slice(pos).match(TERM_RUN);
     if (termMatch)
     {
       tokens.push({ type: 'TERM', value: termMatch[0] });

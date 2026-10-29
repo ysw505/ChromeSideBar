@@ -145,7 +145,7 @@ Array<{
 - Instances: 1 per extension (shared across windows)
 
 ### `sidebar-typed-url-new-tab`
-"Typed addresses open in a new tab": when a bookmark/pinned site's tab is sent to another origin from the address bar, open that URL in a new tab and send the associated tab back
+"Typed addresses open in a new tab": when a bookmark/pinned site's tab is sent to another host from the address bar (scheme, port and a leading `www.` ignored), open that URL in a new tab and send the associated tab back
 ```typescript
 'true' | 'false'  // default 'false'
 ```
@@ -160,7 +160,7 @@ User-assigned background colors of bookmark folders (set from a folder row's con
 Record<string, chrome.tabGroups.ColorEnum>  // bookmark folder id -> color name, default {}
 ```
 - Owner: `src/App.tsx` (via `useChromeLocalStorage`)
-- Consumers: `src/components/BookmarkTree.tsx` (row tint, context menu picker, drops entries of removed folders)
+- Consumers: `src/components/BookmarkTree.tsx` (row tint, context menu picker); `src/App.tsx` prunes entries whose folder no longer exists whenever the bookmark tree changes
 - Logic: `src/utils/folderColors.ts` (`FolderColorMap`)
 - Instances: 1 per extension (shared across windows)
 

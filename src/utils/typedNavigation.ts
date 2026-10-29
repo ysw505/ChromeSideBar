@@ -13,18 +13,19 @@ export function parseTypedUrlNewTab(raw: unknown): boolean
   return raw === 'true';
 }
 
-// Transition types Chrome reports for navigations started from the omnibox
+// Transition types Chrome reports only for navigations started from the omnibox
 const ADDRESS_BAR_TRANSITION_TYPES: readonly string[] = [
   'typed',
   'generated',
   'keyword',
   'keyword_generated',
-  'auto_bookmark',
 ];
 
 // True when a committed navigation came from the address bar.
 // Back/forward commits (including our own goBack) never qualify - loop guard.
 // Link clicks, reloads, form submits and client/JS redirects do not qualify.
+// 'auto_bookmark' is also what a click on Chrome's own bookmarks bar reports, so it counts
+// only with the from_address_bar qualifier (a bookmark picked from omnibox suggestions).
 export function isAddressBarNavigation(transitionType: string, qualifiers: readonly string[]): boolean
 {
   // Back/forward navigation, e.g. the goBack we issue ourselves
@@ -36,12 +37,13 @@ export function isAddressBarNavigation(transitionType: string, qualifiers: reado
     || qualifiers.includes('from_address_bar');
 }
 
-// Parse a URL's origin, or null when the string is not a valid URL
-function originOf(url: string): string | null
+// A URL's host name for comparison: lower case, port and scheme ignored, one leading "www." removed.
+// Null when the string is not a valid URL.
+function comparableHostOf(url: string): string | null
 {
   try
   {
-    return new URL(url).origin;
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
   }
   catch
   {
@@ -49,19 +51,19 @@ function originOf(url: string): string | null
   }
 }
 
-// True when the requested URL is on a different origin (scheme + host + port)
-// than the bookmark/pinned site's own URL. False when either fails to parse.
-export function leavesItemOrigin(requestedUrl: string, itemUrl: string): boolean
+// True when the requested URL is on a different host than the bookmark/pinned site's own URL
+// (scheme, port and a leading "www." ignored). False when either fails to parse.
+export function leavesItemHost(requestedUrl: string, itemUrl: string): boolean
 {
-  const requestedOrigin = originOf(requestedUrl);
-  const itemOrigin = originOf(itemUrl);
+  const requestedHost = comparableHostOf(requestedUrl);
+  const itemHost = comparableHostOf(itemUrl);
 
   // Unparseable URLs: do nothing
-  if (requestedOrigin === null || itemOrigin === null)
+  if (requestedHost === null || itemHost === null)
   {
     return false;
   }
-  return requestedOrigin !== itemOrigin;
+  return requestedHost !== itemHost;
 }
 
 // Remembers the URL each tab asked for in onBeforeNavigate (top frame only),

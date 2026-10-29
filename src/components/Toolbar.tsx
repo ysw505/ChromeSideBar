@@ -2,9 +2,9 @@ import { Settings, Volume2, ChevronDown, X, Save, Clock, Bookmark, Trash2, Rotat
 import React, { forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import clsx from 'clsx';
 import { SearchTagOverlay } from './SearchTagOverlay';
-import { useKnownTags } from '../hooks/useKnownTags';
-import { hashtagOfTerm } from '../utils/searchParser';
-import { prefixColorPalette } from '../utils/titlePrefix';
+import { hashtagOfTerm, isTermBoundary } from '../utils/searchParser';
+import { prefixColorPalette, hasLetter } from '../utils/titlePrefix';
+import { KnownTags } from '../utils/knownTags';
 import * as DropdownMenu from './menu/DropdownMenu';
 import { useShowActiveTab } from '../hooks/useFollowActiveTab';
 import { useSpacesContext } from '../contexts/SpacesContext';
@@ -28,6 +28,10 @@ interface ToolbarProps
   onSubmitFilter?: (text: string) => boolean;
   // Arrow keys with search text: move the Enter target highlight (1 = down, -1 = up); true if handled
   onMoveHighlight?: (delta: 1 | -1) => boolean;
+  // True while an arrow-key highlight marks the bookmark row Enter opens
+  bookmarkRowHighlighted?: boolean;
+  // Tags used in bookmark titles, for the "turn this word into #tag" hint
+  knownTags?: KnownTags;
   savedFilters: string[];
   recentFilters: string[];
   onSaveFilter: (text: string) => void;
@@ -67,10 +71,8 @@ const TreeGutterIcon = ({ size = 16 }: { size?: number }) => (
 
 const DEBOUNCE_MS = 300;
 
-// Characters that end a search word: whitespace and the search parser's punctuation
-const TOKEN_BOUNDARY = /[\s()!"']/;
-// A tag must contain a letter (same rule as the parser), so "123" never offers a tag
-const HAS_LETTER = /\p{L}/u;
+// Search words end where the search parser ends a term (isTermBoundary), and a tag must
+// contain a letter (hasLetter, same rule as the parser), so "123" never offers a tag
 
 // The word of the search text that the caret is in or touching, with its position
 class CaretToken
@@ -88,13 +90,13 @@ class CaretToken
     }
     let start = caret;
     // Walk left to the previous boundary
-    while (start > 0 && !TOKEN_BOUNDARY.test(value[start - 1]))
+    while (start > 0 && !isTermBoundary(value[start - 1]))
     {
       start--;
     }
     let end = caret;
     // Walk right to the next boundary
-    while (end < value.length && !TOKEN_BOUNDARY.test(value[end]))
+    while (end < value.length && !isTermBoundary(value[end]))
     {
       end++;
     }
@@ -104,7 +106,7 @@ class CaretToken
   // Plain word (not already "#tag") that could name a tag
   get couldBeTag(): boolean
   {
-    return !this.text.startsWith('#') && HAS_LETTER.test(this.text);
+    return !this.text.startsWith('#') && hasLetter(this.text);
   }
 
   // Identity of this word at this position, used to remember an Escape dismissal
@@ -136,20 +138,20 @@ class PillToken
   // True when position i is the edge of a search word (text edge or a boundary character)
   private static isEdge(value: string, i: number): boolean
   {
-    return i <= 0 || i >= value.length || TOKEN_BOUNDARY.test(value[i]);
+    return i <= 0 || i >= value.length || isTermBoundary(value[i]);
   }
 
   // The pill whose last character is right before the caret ("#fin|"), if any
   static endingAt(value: string, caret: number): PillToken | undefined
   {
     // A caret inside a word ("#f|in") keeps normal character editing
-    if (caret < value.length && !TOKEN_BOUNDARY.test(value[caret]))
+    if (caret < value.length && !isTermBoundary(value[caret]))
     {
       return undefined;
     }
     let nameStart = caret;
     // Walk left over the tag name to its "#"
-    while (nameStart > 0 && value[nameStart - 1] !== '#' && !TOKEN_BOUNDARY.test(value[nameStart - 1]))
+    while (nameStart > 0 && value[nameStart - 1] !== '#' && !isTermBoundary(value[nameStart - 1]))
     {
       nameStart--;
     }
@@ -172,12 +174,12 @@ class PillToken
     }
     let end = caret + 1;
     // Walk right over the tag name
-    while (end < value.length && value[end] !== '#' && !TOKEN_BOUNDARY.test(value[end]))
+    while (end < value.length && value[end] !== '#' && !isTermBoundary(value[end]))
     {
       end++;
     }
     // The name must end at a word boundary, not run into another "#"
-    if (end < value.length && !TOKEN_BOUNDARY.test(value[end]))
+    if (end < value.length && !isTermBoundary(value[end]))
     {
       return undefined;
     }
@@ -209,6 +211,8 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   onFilterTextChange,
   onSubmitFilter,
   onMoveHighlight,
+  bookmarkRowHighlighted = false,
+  knownTags = KnownTags.EMPTY,
   savedFilters,
   recentFilters,
   onSaveFilter,
@@ -421,7 +425,6 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
   const [sessionRecentEntry, setSessionRecentEntry] = useState<string | null>(null);
 
   // Tag hint: when the word at the caret equals an existing tag, offer to turn it into "#tag"
-  const knownTags = useKnownTags();
   const [caretPos, setCaretPos] = useState<number | null>(null);
   const [inputFocused, setInputFocused] = useState(false);
   // Word dismissed with Escape; its hint stays hidden until the word changes
@@ -743,12 +746,15 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
       }
     }
 
-    // Tag hint showing: Enter converts the word to "#tag", Escape hides the hint for this word
-    if (tagHint && (e.key === 'Enter' || e.key === 'Escape'))
+    // Tag hint showing: Tab (always) or Enter (unless an arrow-key row highlight is set, then Enter
+    // opens that row below) converts the word to "#tag"; Escape hides the hint for this word
+    // (Shift+Tab keeps moving focus backwards)
+    const convertKey = (e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && !bookmarkRowHighlighted);
+    if (tagHint && (convertKey || e.key === 'Escape'))
     {
       e.preventDefault();
       e.stopPropagation();
-      if (e.key === 'Enter')
+      if (convertKey)
       {
         convertHintToTag();
       }
@@ -779,7 +785,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
       commitToRecent();
       submitFilter();
     }
-  }, [commitToRecent, submitFilter, inputValue, onMoveHighlight, tagHint, convertHintToTag, handleInputChange]);
+  }, [commitToRecent, submitFilter, inputValue, onMoveHighlight, tagHint, convertHintToTag, handleInputChange, bookmarkRowHighlighted]);
 
   // Handle input blur to commit to recent
   const handleInputBlur = useCallback(() =>
@@ -1042,7 +1048,7 @@ export const Toolbar = forwardRef<HTMLButtonElement, ToolbarProps>(({
                   <span className={clsx('rounded px-1 text-xs', prefixColorPalette.classesFor(tagHint.spelling))}>
                     {tagHint.spelling}
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Enter: filter by tag</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Enter or Tab: filter by tag</span>
                 </div>
               </div>
             )}

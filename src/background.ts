@@ -1,7 +1,7 @@
 import { SpaceMessageAction, Space, ALL_SPACE } from './utils/spaceMessages';
 import { USE_SPACES_KEY, isSpacesEnabled, nextSpaceId } from './utils/spaceCycle';
 import { FOLLOW_ACTIVE_TAB_KEY, parseFollowActiveTabMode } from './utils/followActiveTab';
-import { TYPED_URL_NEW_TAB_KEY, parseTypedUrlNewTab, isAddressBarNavigation, leavesItemOrigin, RequestedUrlTracker } from './utils/typedNavigation';
+import { TYPED_URL_NEW_TAB_KEY, parseTypedUrlNewTab, isAddressBarNavigation, leavesItemHost, RequestedUrlTracker } from './utils/typedNavigation';
 import { isPinnedManagedTab, getTabAssociations, saveTabAssociationBackup, removeTabAssociationBackup, updateTabAssociationBackupIndices, removeWindowAssociationBackup, restoreTabAssociationBackup } from './utils/tabAssociations';
 import { toChromeColor } from './utils/groupColors';
 import { fetchFaviconAsBase64, getFaviconUrl } from './utils/favicon';
@@ -540,9 +540,9 @@ chrome.webNavigation.onCommitted.addListener(async (details) =>
       return;
     }
 
-    // Same-origin movement stays in the tab; missing item URL means do nothing
+    // Same-host movement stays in the tab; missing item URL means do nothing
     const itemUrl = await getAssociatedItemUrl(itemKey);
-    if (!itemUrl || !leavesItemOrigin(requestedUrl, itemUrl))
+    if (!itemUrl || !leavesItemHost(requestedUrl, itemUrl))
     {
       return;
     }

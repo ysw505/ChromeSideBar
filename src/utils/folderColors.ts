@@ -60,15 +60,15 @@ export class FolderColorMap
     return new FolderColorMap(next);
   }
 
-  // Returns a new map without the given folders, or this map when none of them had a color
-  without(folderIds: string[]): FolderColorMap
+  // Returns a new map with only the folders in liveFolderIds, or this map when every colored folder is still there
+  prunedTo(liveFolderIds: ReadonlySet<string>): FolderColorMap
   {
-    const present = folderIds.filter(id => id in this.colors);
-    if (present.length === 0) return this;
+    const deadIds = Object.keys(this.colors).filter(id => !liveFolderIds.has(id));
+    if (deadIds.length === 0) return this;
 
     const next = { ...this.colors };
-    // Drop each removed folder's entry
-    for (const id of present)
+    // Drop each folder that no longer exists
+    for (const id of deadIds)
     {
       delete next[id];
     }
@@ -89,18 +89,18 @@ export const getFolderTintClass = (
   return undefined;
 };
 
-// Collect the ids of a removed node and all folders below it (for onRemoved cleanup)
-export const collectFolderIds = (node: chrome.bookmarks.BookmarkTreeNode): string[] =>
+// Collect the ids of every folder in the given nodes and below them (for pruning colors of deleted folders)
+export const collectFolderIds = (nodes: chrome.bookmarks.BookmarkTreeNode[]): Set<string> =>
 {
-  const ids: string[] = [];
-  const stack = [node];
-  // Walk the removed subtree depth-first, keeping folder ids only
+  const ids = new Set<string>();
+  const stack = [...nodes];
+  // Walk the tree depth-first, keeping folder ids only
   while (stack.length > 0)
   {
     const current = stack.pop()!;
     if (!current.url)
     {
-      ids.push(current.id);
+      ids.add(current.id);
       stack.push(...(current.children ?? []));
     }
   }

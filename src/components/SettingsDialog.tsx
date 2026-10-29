@@ -255,7 +255,7 @@ export function SettingsDialog({
                 Typed addresses open in a new tab
               </label>
               <p className="mt-0.5 text-gray-500 dark:text-gray-400 ml-5">
-                When a bookmark's tab is sent to another site from the address bar, that site opens in a new tab and the bookmark's tab goes back to its page. The page reloads, so it flashes briefly. Links inside the page and same-site addresses are not affected.
+                When a bookmark's tab is sent to another site from the address bar, that site opens in a new tab and the bookmark's tab goes back to its page. The page reloads, so it flashes briefly. Links inside the page and addresses on the same host are not affected.
               </p>
             </div>
 

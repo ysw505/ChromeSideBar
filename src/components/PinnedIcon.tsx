@@ -9,6 +9,7 @@ import { IconColorPicker, PINNED_SITE_COLORS, DEFAULT_ICON_COLOR } from './IconC
 import { iconToDataUrl } from '../utils/iconify';
 import { createPinDragData, DropData, DropPosition, DragFormat, acceptsFormats } from '../types/dragDrop';
 import { InstantTooltip } from './InstantTooltip';
+import { useUnifiedDndOptional } from '../contexts/UnifiedDndContext';
 
 /**
  * Text shown in the hover tooltip: the saved pin name, or the URL host when the name is empty.
@@ -127,8 +128,16 @@ export const PinnedIcon = ({
   // Anchor rect of the icon while the instant tooltip is visible; null = hidden
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
 
+  // True while any drag (this pin, another pin, a tab or a bookmark) is in progress
+  const anyDragActive = useUnifiedDndOptional()?.activeId != null;
+
   const showTooltip = (e: React.SyntheticEvent<HTMLDivElement>) =>
   {
+    // No tooltips over the drop indicators while something is being dragged
+    if (anyDragActive)
+    {
+      return;
+    }
     setTooltipRect(e.currentTarget.getBoundingClientRect());
   };
 
@@ -150,14 +159,14 @@ export const PinnedIcon = ({
     data: createPinDragData(site.id, site.url, site.title, site.favicon),
   });
 
-  // Drop the tooltip anchor once a drag starts so it cannot reappear at the old spot after drop
+  // Drop the tooltip anchor once any drag starts so it cannot reappear at the old spot after drop
   useEffect(() =>
   {
-    if (isDragging)
+    if (isDragging || anyDragActive)
     {
       setTooltipRect(null);
     }
-  }, [isDragging]);
+  }, [isDragging, anyDragActive]);
 
   // Droppable setup - accepts PIN (reorder) or URL (create new pin)
   const { setNodeRef: setDropRef } = useDroppable({
@@ -315,7 +324,7 @@ export const PinnedIcon = ({
             style={{ width: iconSize + 8, height: iconSize + 8 }}
             {...attributes}
             {...listeners}
-            aria-label={site.title || getTooltipText(site)}
+            aria-label={getTooltipText(site)}
             data-dnd-id={pinId}
             className={clsx(
               "group/pin relative flex items-center justify-center rounded",
@@ -424,7 +433,7 @@ export const PinnedIcon = ({
       </ContextMenu.Root>
 
       {/* Instant name tooltip - suppressed while dragging or editing */}
-      {tooltipRect && !isDragging && !showEditModal && (
+      {tooltipRect && !isDragging && !anyDragActive && !showEditModal && (
         <InstantTooltip text={getTooltipText(site)} anchorRect={tooltipRect} />
       )}
 

@@ -367,12 +367,14 @@ export const BookmarkTabsProvider = ({ children }: BookmarkTabsProviderProps) =>
 
   // Listen for active tab changes in this panel's window only - onActivated fires
   // for every window, and another window's tab switch must not change which row
-  // shows as active here (or clear this panel's selection)
+  // shows as active here (or clear this panel's selection). Until this panel's
+  // window id is known, every activation is ignored: the window is unknown, and
+  // the tabs.query below already seeds this window's active tab.
   useEffect(() =>
   {
     const handleTabActivated = (activeInfo: chrome.tabs.TabActiveInfo) =>
     {
-      if (currentWindowId !== null && activeInfo.windowId !== currentWindowId) return;
+      if (currentWindowId === null || activeInfo.windowId !== currentWindowId) return;
       setActiveTabId(activeInfo.tabId);
     };
 

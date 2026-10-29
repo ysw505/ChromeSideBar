@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense } from 'react';
 import { BookmarkTree, OpenFirstVisibleBookmark, MoveBookmarkHighlight } from './components/BookmarkTree';
 import { TabList, ExternalDropTarget, ResolveBookmarkDropTarget } from './components/TabList';
 import { PinnedBar } from './components/PinnedBar';
@@ -20,7 +20,8 @@ import { useTabs } from './hooks/useTabs';
 import { useBookmarks, refreshAllBookmarks } from './hooks/useBookmarks';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { useChromeLocalStorage } from './hooks/useChromeLocalStorage';
-import { FolderColorMap, FOLDER_COLORS_KEY } from './utils/folderColors';
+import { FolderColorMap, FOLDER_COLORS_KEY, collectFolderIds } from './utils/folderColors';
+import { KnownTags } from './utils/knownTags';
 import { useSwipeNavigation } from './hooks/useSwipeNavigation';
 import { FontSizeContext } from './contexts/FontSizeContext';
 import { BookmarkTabsProvider, useBookmarkTabsContext } from './contexts/BookmarkTabsContext';
@@ -43,7 +44,7 @@ import { useNewsCheck } from './hooks/useNewsCheck';
 import { lastAudibleTrackerProxy } from './managers/proxies/lastAudibleTrackerProxy';
 import { useFollowActiveTab } from './hooks/useFollowActiveTab';
 import { FollowActiveTabMode, FOLLOW_ACTIVE_TAB_KEY, DEFAULT_FOLLOW_ACTIVE_TAB_MODE, parseFollowActiveTabMode } from './utils/followActiveTab';
-import { TYPED_URL_NEW_TAB_KEY } from './utils/typedNavigation';
+import { TYPED_URL_NEW_TAB_KEY, parseTypedUrlNewTab } from './utils/typedNavigation';
 import * as DropdownMenu from './components/menu/DropdownMenu';
 
 // DEV-only, code-split so it never ends up in a production bundle - see
@@ -72,6 +73,7 @@ interface SidebarContentProps
   onResolverReady: (fn: ResolveBookmarkDropTarget) => void;
   onOpenFirstVisibleReady: (fn: OpenFirstVisibleBookmark) => void;
   onMoveHighlightReady: (fn: MoveBookmarkHighlight) => void;
+  onHighlightChange: (highlighted: boolean) => void;
   keepBookmarkNames: boolean;
   prefixTags: boolean;
   onFilterByTag: (tag: string, append: boolean) => void;
@@ -107,6 +109,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   onResolverReady,
   onOpenFirstVisibleReady,
   onMoveHighlightReady,
+  onHighlightChange,
   keepBookmarkNames,
   prefixTags,
   onFilterByTag,
@@ -216,6 +219,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
         onResolverReady={onResolverReady}
         onOpenFirstVisibleReady={onOpenFirstVisibleReady}
         onMoveHighlightReady={onMoveHighlightReady}
+        onHighlightChange={onHighlightChange}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         onFilterByTag={onFilterByTag}
@@ -586,7 +590,7 @@ function App() {
   const [typedUrlNewTab, setTypedUrlNewTab] = useChromeLocalStorage(
     TYPED_URL_NEW_TAB_KEY,
     false,
-    { parse: (v) => v === 'true', serialize: (v) => v.toString() }
+    { parse: parseTypedUrlNewTab, serialize: (v) => v.toString() }
   );
   // Show the #tags (or legacy "tag · ") of bookmark names as colored chips
   const [prefixTags, setPrefixTags] = useChromeLocalStorage(
@@ -790,6 +794,8 @@ function App() {
   const openFirstVisibleBookmarkRef = useRef<OpenFirstVisibleBookmark | null>(null);
   // Set by the mounted BookmarkTree: moves the Enter target highlight (arrow keys in search box)
   const moveBookmarkHighlightRef = useRef<MoveBookmarkHighlight | null>(null);
+  // Set by the mounted BookmarkTree: true while an arrow-key highlight marks the row Enter opens
+  const [bookmarkRowHighlighted, setBookmarkRowHighlighted] = useState(false);
   const newsHoverTimerRef = useRef<number | null>(null);
   // Clean up hover timer on unmount
   useEffect(() =>
@@ -818,6 +824,24 @@ function App() {
     appendPinnedSites,
   } = usePinnedSites();
   const { bookmarks } = useBookmarks();
+
+  // Tags used in bookmark titles, for the search box's "turn this word into #tag" hint
+  const knownTags = useMemo(() => KnownTags.fromTree(bookmarks), [bookmarks]);
+
+  // Drop colors of folders that no longer exist (also catches deletes made while no panel was open).
+  // An empty tree means "not loaded yet", never "every folder deleted", so it never prunes.
+  useEffect(() =>
+  {
+    if (bookmarks.length === 0)
+    {
+      return;
+    }
+    const pruned = folderColors.prunedTo(collectFolderIds(bookmarks));
+    if (pruned !== folderColors)
+    {
+      setFolderColors(pruned);
+    }
+  }, [bookmarks, folderColors, setFolderColors]);
   const { tabs, refreshTabs } = useTabs();
   const { hasUnreadNews, markNewsRead, openNews } = useNewsCheck();
 
@@ -1173,6 +1197,8 @@ function App() {
           onFilterTextChange={handleFilterTextChange}
           onSubmitFilter={handleSubmitFilter}
           onMoveHighlight={handleMoveHighlight}
+          bookmarkRowHighlighted={bookmarkRowHighlighted}
+          knownTags={knownTags}
           savedFilters={savedFilters}
           recentFilters={recentFilters}
           onSaveFilter={handleSaveFilter}
@@ -1363,6 +1389,7 @@ function App() {
         onResolverReady={(fn) => { bookmarkDropResolverRef.current = fn; }}
         onOpenFirstVisibleReady={(fn) => { openFirstVisibleBookmarkRef.current = fn; }}
         onMoveHighlightReady={(fn) => { moveBookmarkHighlightRef.current = fn; }}
+        onHighlightChange={setBookmarkRowHighlighted}
         keepBookmarkNames={keepBookmarkNames}
         prefixTags={prefixTags}
         onFilterByTag={handleFilterByTag}

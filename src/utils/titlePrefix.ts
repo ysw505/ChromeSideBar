@@ -11,6 +11,12 @@ const HASHTAG_TOKEN = /(^|\s)#([^\s#]+)(?=\s|$)/gu;
 // A tag must contain at least one letter, so "Issue #123" keeps its number
 const HAS_LETTER = /\p{L}/u;
 
+// True when the text contains a letter; the one rule for "could this word be a tag"
+export function hasLetter(text: string): boolean
+{
+  return HAS_LETTER.test(text);
+}
+
 export interface TitleTags
 {
   tags: string[];
@@ -59,7 +65,7 @@ function parseHashtags(title: string): TitleTags
   const name = title.replace(HASHTAG_TOKEN, (token: string, lead: string, word: string) =>
   {
     // Numbers-only tokens like "#123" stay in the name
-    if (!HAS_LETTER.test(word))
+    if (!hasLetter(word))
     {
       return token;
     }

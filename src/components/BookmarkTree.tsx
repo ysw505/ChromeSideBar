@@ -24,7 +24,7 @@ import { TreeRow, RING_HIGHLIGHT } from './TreeRow';
 import { useInView } from '../hooks/useInView';
 import { SPEAKER_ICON_SIZE } from '../constants';
 import { parseTitleTags, collectTitleTags, retagTitle, prefixColorPalette } from '../utils/titlePrefix';
-import { FolderColorMap, getFolderTintClass, collectFolderIds } from '../utils/folderColors';
+import { FolderColorMap, getFolderTintClass } from '../utils/folderColors';
 import {
   Globe,
   Trash,
@@ -943,6 +943,8 @@ interface BookmarkTreeProps {
   onOpenFirstVisibleReady?: (openFirstVisible: OpenFirstVisibleBookmark) => void;
   // Receives a function that moves the highlighted Enter target (arrow keys in search box)
   onMoveHighlightReady?: (moveHighlight: MoveBookmarkHighlight) => void;
+  // Told whether an arrow-key highlight is set (search box Enter then opens that row instead of making a #tag)
+  onHighlightChange?: (highlighted: boolean) => void;
   keepBookmarkNames?: boolean;
   prefixTags?: boolean;
   // Tag chip clicked in a row: search for that tag (append = add to the current search)
@@ -958,7 +960,7 @@ interface BookmarkTreeProps {
   useSpaces?: boolean;
 }
 
-export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, keepBookmarkNames = false, prefixTags = false, onFilterByTag, folderColors = FolderColorMap.EMPTY, onFolderColorsChange, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
+export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false, flattenBookmarksBar = false, externalDropTarget, bookmarkOpenMode = 'arc', arcSingleClickOpensTab = true, onResolverReady, onOpenFirstVisibleReady, onMoveHighlightReady, onHighlightChange, keepBookmarkNames = false, prefixTags = false, onFilterByTag, folderColors = FolderColorMap.EMPTY, onFolderColorsChange, filterLiveTabs = false, filterText = '', activeSpace, onShowToast, onPerformAction, useSpaces = true }: BookmarkTreeProps) => {
   const { bookmarks, updateBookmark, createFolder, createBookmark, sortBookmarks, moveBookmark, duplicateBookmark, findFolderBySegments, getAllBookmarksInFolder, getBookmarkSegments, getBookmark, error } = useBookmarks();
   const { openBookmarkTab, closeBookmarkTab, isBookmarkLoaded, isBookmarkAudible, isBookmarkActive, getBookmarkLiveTitle, deassociateBookmarkTab, getTabIdForBookmark, getItemKeyForTab, restoreItemAssociation, associateExistingTab, activeTabId } = useBookmarkTabsContext();
   const { spaces, updateSpace, updateSpaceFolderPaths, windowId } = useSpacesContext();
@@ -1003,7 +1005,7 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
     return folderIdToSpace.get(folderId);
   }, [folderIdToSpace]);
 
-  // Latest folder colors, read by the onRemoved listener without re-subscribing on every change
+  // Latest folder colors, read by the color setter without re-creating it on every change
   const folderColorsRef = useRef(folderColors);
   folderColorsRef.current = folderColors;
 
@@ -1011,23 +1013,6 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
   const handleSetFolderColor = useCallback((folderId: string, color: chrome.tabGroups.ColorEnum | null) =>
   {
     onFolderColorsChange?.(folderColorsRef.current.with(folderId, color));
-  }, [onFolderColorsChange]);
-
-  // Drop the colors of removed folders (and of folders inside them) so the map doesn't keep stale ids
-  useEffect(() =>
-  {
-    if (!onFolderColorsChange) return;
-    const handleRemoved = (_id: string, removeInfo: chrome.bookmarks.BookmarkRemoveInfo) =>
-    {
-      const current = folderColorsRef.current;
-      const next = current.without(collectFolderIds(removeInfo.node));
-      if (next !== current)
-      {
-        onFolderColorsChange(next);
-      }
-    };
-    chrome.bookmarks?.onRemoved.addListener(handleRemoved);
-    return () => chrome.bookmarks?.onRemoved.removeListener(handleRemoved);
   }, [onFolderColorsChange]);
 
   // Open all bookmarks in folder as a tab group
@@ -1577,6 +1562,17 @@ export const BookmarkTree = ({ onPin, onPinMultiple, hideOtherBookmarks = false,
       setHighlightedBookmarkId(null);
     }
   }, [highlightedBookmarkId, isHighlightShown]);
+
+  // Report whether a highlight is set; reset to false when the tree unmounts
+  const hasHighlight = highlightedBookmarkId !== null;
+  useEffect(() =>
+  {
+    onHighlightChange?.(hasHighlight);
+  }, [onHighlightChange, hasHighlight]);
+  useEffect(() =>
+  {
+    return () => onHighlightChange?.(false);
+  }, [onHighlightChange]);
 
   // Keep the highlighted row on screen
   useEffect(() =>

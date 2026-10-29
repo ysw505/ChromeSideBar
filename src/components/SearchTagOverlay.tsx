@@ -1,11 +1,12 @@
 import React, { forwardRef } from 'react';
 import clsx from 'clsx';
-import { hashtagOfTerm } from '../utils/searchParser';
+import { hashtagOfTerm, TERM_BOUNDARY_CHARS } from '../utils/searchParser';
 import { prefixColorPalette } from '../utils/titlePrefix';
 
-// A "#word" token bounded by start/whitespace/"("/"!" on the left and end/whitespace/")" on the right.
+// A "#word" token bounded on both sides by the text edge or a search term boundary (searchParser's
+// TERM_BOUNDARY_CHARS), so a pill covers exactly the term the parser reads.
 // Visual only: filtering is decided by searchParser, never by this regex.
-const TAG_TOKEN = /(^|[\s(!])(#[^\s#()]+)(?=$|[\s)])/g;
+const TAG_TOKEN = new RegExp(`(^|[${TERM_BOUNDARY_CHARS}])(#[^${TERM_BOUNDARY_CHARS}#]+)(?=$|[${TERM_BOUNDARY_CHARS}])`, 'g');
 
 // One run of the search text: plain characters, or a token that names a tag
 interface SearchTextPiece
